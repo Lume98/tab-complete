@@ -44,13 +44,13 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            lsp-server/target
-          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('lsp-server/Cargo.lock') }}
+            server/target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('server/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-${{ matrix.target }}-
 
       - name: Build Rust LSP Server
-        working-directory: lsp-server
+        working-directory: server
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Setup Node.js
@@ -71,10 +71,10 @@ jobs:
         run: |
           mkdir -p vscode-extension/lsp-bin/${{ matrix.platform }}-${{ matrix.arch }}
           if [ "${{ matrix.platform }}" = "win32" ]; then
-            cp lsp-server/target/${{ matrix.target }}/release/ai-tab-complete-lsp.exe \
+            cp server/target/${{ matrix.target }}/release/ai-tab-complete-lsp.exe \
                vscode-extension/lsp-bin/${{ matrix.platform }}-${{ matrix.arch }}/
           else
-            cp lsp-server/target/${{ matrix.target }}/release/ai-tab-complete-lsp \
+            cp server/target/${{ matrix.target }}/release/ai-tab-complete-lsp \
                vscode-extension/lsp-bin/${{ matrix.platform }}-${{ matrix.arch }}/
             chmod +x vscode-extension/lsp-bin/${{ matrix.platform }}-${{ matrix.arch }}/ai-tab-complete-lsp
           fi

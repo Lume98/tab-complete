@@ -15,7 +15,7 @@ echo ""
 
 # 1. 编译 Rust LSP Server
 echo "[1/4] Compiling Rust LSP Server..."
-cd "$ROOT_DIR/lsp-server"
+cd "$ROOT_DIR/server"
 if [ "$BUILD_TYPE" = "release" ]; then
     cargo build --release
     BINARY_DIR="target/release"
@@ -23,7 +23,7 @@ else
     cargo build
     BINARY_DIR="target/debug"
 fi
-echo "  -> Done: lsp-server/$BINARY_DIR/"
+echo "  -> Done: server/$BINARY_DIR/"
 echo ""
 
 # 2. 复制二进制到扩展目录
@@ -51,7 +51,7 @@ else
     BINARY_NAME="ai-tab-complete-lsp"
 fi
 
-cp "$ROOT_DIR/lsp-server/$BINARY_DIR/$BINARY_NAME" "$TARGET_DIR/"
+cp "$ROOT_DIR/server/$BINARY_DIR/$BINARY_NAME" "$TARGET_DIR/"
 chmod +x "$TARGET_DIR/$BINARY_NAME" 2>/dev/null || true
 echo "  -> Copied to: lsp-bin/${PLATFORM_NAME}-${ARCH_NAME}/$BINARY_NAME"
 echo ""

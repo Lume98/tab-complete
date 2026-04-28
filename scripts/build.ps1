@@ -14,7 +14,7 @@ Write-Host ""
 
 # 1. Compile Rust LSP Server
 Write-Host "[1/4] Compiling Rust LSP Server..." -ForegroundColor Yellow
-Set-Location "$RootDir\lsp-server"
+Set-Location "$RootDir\server"
 if ($Debug) {
     cargo build
     $BinaryDir = "target\debug"
@@ -22,7 +22,7 @@ if ($Debug) {
     cargo build --release
     $BinaryDir = "target\release"
 }
-Write-Host "  -> Done: lsp-server\$BinaryDir\" -ForegroundColor Green
+Write-Host "  -> Done: server\$BinaryDir\" -ForegroundColor Green
 Write-Host ""
 
 # 2. Copy binary to extension directory
@@ -33,7 +33,7 @@ $TargetDir = "$RootDir\vscode-extension\lsp-bin\$PlatformDir"
 New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 
 $BinaryName = "ai-tab-complete-lsp.exe"
-Copy-Item "$RootDir\lsp-server\$BinaryDir\$BinaryName" "$TargetDir\" -Force
+Copy-Item "$RootDir\server\$BinaryDir\$BinaryName" "$TargetDir\" -Force
 Write-Host "  -> Copied to: lsp-bin\$PlatformDir\$BinaryName" -ForegroundColor Green
 Write-Host ""
 

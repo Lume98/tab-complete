@@ -75,8 +75,8 @@ export class ServerManager {
         // 常见的 cargo build 产物位置
         const projectRoot = path.resolve(this.context.extensionPath, '..');
         return [
-            path.join(projectRoot, 'lsp-server', 'target', 'release', binaryName),
-            path.join(projectRoot, 'lsp-server', 'target', 'debug', binaryName),
+            path.join(projectRoot, 'server', 'target', 'release', binaryName),
+            path.join(projectRoot, 'server', 'target', 'debug', binaryName),
         ];
     }
 

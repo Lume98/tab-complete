@@ -2,7 +2,7 @@
 .ai-tab-complete.toml
 
 # Rust
-lsp-server/target/
+server/target/
 
 # Node.js
 node_modules/
@@ -24,6 +24,9 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Claude Code (local overrides)
+.claude/settings.local.json
 
 # Environment
 .env

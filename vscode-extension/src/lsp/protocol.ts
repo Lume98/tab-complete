@@ -1,4 +1,4 @@
-/** VS Code 侧 LSP 协议类型定义，与 rust lsp-server/src/protocol.rs 保持一致 */
+/** VS Code 侧 LSP 协议类型定义，与 rust server/src/protocol.rs 保持一致 */
 
 export interface InlineCompletionParams {
     textDocument: {

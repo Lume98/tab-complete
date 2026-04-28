@@ -7,7 +7,7 @@
       "command": "cargo",
       "args": ["build", "--release"],
       "options": {
-        "cwd": "${workspaceFolder}/lsp-server"
+        "cwd": "${workspaceFolder}/server"
       },
       "problemMatcher": "$rustc",
       "group": "build"
