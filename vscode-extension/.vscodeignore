@@ -1,0 +1,14 @@
+.vscode/**
+.gitignore
+tsconfig.json
+webpack.config.js
+src/**
+node_modules/**
+.vscode-test/**
+test/**
+**/*.ts
+**/*.map
+!out/**
+**/tsconfig*.json
+# 保留 LSP 二进制文件
+!lsp-bin/**
