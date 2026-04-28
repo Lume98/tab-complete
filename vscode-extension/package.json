@@ -1,0 +1,134 @@
+{
+  "name": "ai-tab-complete",
+  "displayName": "AI Tab Complete",
+  "description": "AI驱动内联代码补全，支持Claude/OpenAI/Ollama",
+  "version": "0.1.0",
+  "publisher": "ai-tab-complete",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/ai-tab-complete.git"
+  },
+  "engines": {
+    "vscode": "^1.116.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "AI Tab Complete",
+      "properties": {
+        "aiTabComplete.provider": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "openai",
+            "ollama"
+          ],
+          "default": "claude",
+          "description": "AI 提供商"
+        },
+        "aiTabComplete.claude.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-20250514",
+          "description": "Claude 模型名称"
+        },
+        "aiTabComplete.openai.model": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "OpenAI 模型名称"
+        },
+        "aiTabComplete.ollama.model": {
+          "type": "string",
+          "default": "codellama",
+          "description": "Ollama 模型名称"
+        },
+        "aiTabComplete.debounceMs": {
+          "type": "number",
+          "default": 150,
+          "minimum": 50,
+          "maximum": 1000,
+          "description": "触发补全前等待的毫秒数（防抖）"
+        },
+        "aiTabComplete.maxTokens": {
+          "type": "number",
+          "default": 256,
+          "minimum": 16,
+          "maximum": 4096,
+          "description": "最大补全 Token 数"
+        },
+        "aiTabComplete.enableAutoCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用自动补全"
+        },
+        "aiTabComplete.enableStreaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用流式输出（逐 token 显示补全）"
+        },
+        "aiTabComplete.contextLinesBefore": {
+          "type": "number",
+          "default": 50,
+          "minimum": 0,
+          "maximum": 200,
+          "description": "光标前包含的上下文行数"
+        },
+        "aiTabComplete.contextLinesAfter": {
+          "type": "number",
+          "default": 20,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "光标后包含的上下文行数"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "aiTabComplete.trigger",
+        "title": "AI Tab Complete: 手动触发补全"
+      },
+      {
+        "command": "aiTabComplete.toggle",
+        "title": "AI Tab Complete: 启用/禁用自动补全"
+      },
+      {
+        "command": "aiTabComplete.clearCache",
+        "title": "AI Tab Complete: 清除缓存"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "aiTabComplete.accept",
+        "key": "tab",
+        "when": "inlineCompletionVisible && !suggestWidgetVisible"
+      },
+      {
+        "command": "aiTabComplete.dismiss",
+        "key": "escape",
+        "when": "inlineCompletionVisible"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "tsc -p ./",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "echo \"TODO: add tests\" && exit 0"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.116.0",
+    "typescript": "^6.0.3",
+    "vscode-languageclient": "^9.0.1"
+  }
+}

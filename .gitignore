@@ -1,0 +1,29 @@
+# AI Tab Complete config (contains API keys)
+.ai-tab-complete.toml
+
+# Rust
+lsp-server/target/
+
+# Node.js
+node_modules/
+
+# VS Code extension build output
+vscode-extension/out/
+
+# VSIX package
+*.vsix
+
+# LSP binaries (platform-specific, built by CI)
+vscode-extension/lsp-bin/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env

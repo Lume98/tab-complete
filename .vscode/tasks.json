@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Rust LSP",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build", "--release"],
+      "options": {
+        "cwd": "${workspaceFolder}/lsp-server"
+      },
+      "problemMatcher": "$rustc",
+      "group": "build"
+    },
+    {
+      "label": "Build VS Code Extension",
+      "type": "npm",
+      "script": "compile",
+      "path": "vscode-extension",
+      "problemMatcher": "$tsc",
+      "group": "build"
+    },
+    {
+      "label": "Build All",
+      "dependsOn": ["Build Rust LSP", "Build VS Code Extension"],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+[package]
+name = "ai-tab-complete-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "AI-powered tab completion LSP server for VS Code"
+
+[[bin]]
+name = "ai-tab-complete-lsp"
+path = "src/main.rs"
+
+[dependencies]
+# LSP framework
+tower-lsp = "0.20"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "io-util", "io-std"] }
+futures = "0.3"
+tokio-stream = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
+
+# Caching
+lru = "0.12"
+dashmap = "6"
+
+# Token counting
+tiktoken-rs = "0.6"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Utilities
+regex = "1"
+uuid = { version = "1", features = ["v4"] }
+async-trait = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"
+strip = true
