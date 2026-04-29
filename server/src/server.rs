@@ -113,7 +113,9 @@ impl Backend {
         Ok(self.handle_inline_completion(params).await)
     }
 
-    /// 处理内联补全请求
+    /// 处理内联补全请求（核心流程）
+    ///
+    /// 流程：读取文档 → 收集上下文 → 检查是否触发 → 查缓存 → 调用 AI → 后处理
     async fn handle_inline_completion(
         &self,
         params: InlineCompletionParams,
@@ -121,12 +123,12 @@ impl Backend {
         let uri = params.text_document.uri;
         let position = params.position;
 
-        // 读取文档内容
+        // 1. 读取当前文档内容（从内存中的文档快照）
         let docs = self.documents.read().await;
         let content = docs.docs.get(&uri)?;
         let language = detect_language(&uri);
 
-        // 收集上下文
+        // 2. 收集上下文：prefix/suffix/上下文行/语法信息
         let config = self.config.read().await;
         let collector = ContextCollector::new(config.context_lines_before, config.context_lines_after);
         let request = collector.collect(
@@ -138,12 +140,12 @@ impl Backend {
         );
         drop(docs);
 
-        // 检查是否应触发补全
+        // 3. 过滤：空行、注释中不触发补全
         if !should_complete(&request.prefix, &language) {
             return None;
         }
 
-        // 检查缓存
+        // 4. 检查服务端缓存（按 prefix+suffix+language hash）
         let cache_key = build_cache_key(&request);
         if let Some(cached) = self.cache.get(&cache_key).await {
             tracing::debug!("Cache hit");
@@ -155,7 +157,7 @@ impl Backend {
             });
         }
 
-        // 调用 AI Provider
+        // 5. 调用 AI Provider
         let max_tokens = config.max_tokens;
         let enable_streaming = config.enable_streaming;
         drop(config);
@@ -164,7 +166,7 @@ impl Backend {
         let start = std::time::Instant::now();
 
         if enable_streaming {
-            // 流式模式：使用 stream_completion 收集 tokens
+            // 流式模式：逐 token 推送更新通知到 VS Code 客户端
             match provider.stream_completion(request.clone(), max_tokens).await {
                 Ok(mut stream) => {
                     use futures::StreamExt;
@@ -173,6 +175,7 @@ impl Backend {
                     let mut accumulated = String::new();
                     let mut completion_id = String::new();
 
+                    // 逐个消费 SSE chunk，累积 token 并通过 custom/inlineCompletionUpdate 推送
                     while let Some(chunk_result) = stream.next().await {
                         match chunk_result {
                             Ok(chunk) => {
@@ -181,7 +184,7 @@ impl Backend {
                                 }
                                 accumulated.push_str(&chunk.token);
 
-                                // 发送流式更新通知给客户端
+                                // 每收到一个 token 立即通知 VS Code 刷新幽灵文本
                                 let update = InlineCompletionUpdateParams {
                                     stream_id: stream_id.clone(),
                                     text: accumulated.clone(),
@@ -204,11 +207,12 @@ impl Backend {
                     let elapsed = start.elapsed();
                     tracing::info!("Streaming completion done in {:?}", elapsed);
 
-                    // 后处理
+                    // 6. 后处理：过滤代码块标记、去重 prefix、截断
                     let filtered = filter::filter_completion(&accumulated, &request.prefix);
                     match filtered {
                         Some(text) => {
                             let truncated = filter::truncate_completion(&text, 20, 512);
+                            // 7. 写入缓存
                             self.cache.put(cache_key, truncated.clone()).await;
 
                             Some(InlineCompletionList {
@@ -222,19 +226,21 @@ impl Backend {
                     }
                 }
                 Err(e) => {
+                    // 流式失败降级到非流式
                     tracing::warn!("Streaming completion failed: {:?}, falling back to non-streaming", e);
                     self.complete_non_streaming(&provider, request, max_tokens, cache_key, start)
                         .await
                 }
             }
         } else {
-            // 非流式模式
+            // 非流式模式：一次性返回完整结果
             self.complete_non_streaming(&provider, request, max_tokens, cache_key, start)
                 .await
         }
     }
 
-    /// 非流式补全
+    /// 非流式补全（带指数退避重试）
+    /// 流程：重试调用 AI → 合并 chunks → 后处理 → 缓存
     async fn complete_non_streaming(
         &self,
         provider: &Box<dyn AIProvider>,
@@ -278,7 +284,8 @@ impl Backend {
     }
 }
 
-/// 构建缓存 key
+/// 构建缓存 key：language + prefix/suffix 的 hash
+/// 相同语言、相同光标位置的请求命中同一缓存
 fn build_cache_key(request: &crate::completion::context::CompletionRequest) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -288,7 +295,8 @@ fn build_cache_key(request: &crate::completion::context::CompletionRequest) -> S
     format!("{}-{:x}", request.language, hasher.finish())
 }
 
-/// 增量编辑
+/// 将 range 范围内的文本替换为 new_text，实现增量文档同步
+/// VS Code 发送增量的 didChange 事件，需要逐个应用编辑操作
 fn apply_incremental_edit(content: &str, range: &Range, new_text: &str) -> Option<String> {
     let mut result = String::new();
     let lines: Vec<&str> = content.lines().collect();
@@ -330,7 +338,7 @@ fn apply_incremental_edit(content: &str, range: &Range, new_text: &str) -> Optio
     Some(result)
 }
 
-/// 根据 URI 检测语言
+/// 根据文件扩展名推断编程语言（用于 prompt 中的语言标识和补全策略选择）
 fn detect_language(uri: &Url) -> String {
     let path = uri.path();
     let ext = std::path::Path::new(path)
@@ -368,7 +376,8 @@ fn detect_language(uri: &Url) -> String {
     }
 }
 
-/// 根据配置创建 AI Provider
+/// 工厂函数：根据配置中的 provider 类型创建对应的 AI Provider 实例
+/// 支持运行时切换（配置变更时重建 provider）
 pub fn create_provider_from_config(config: &AppConfig) -> Box<dyn AIProvider> {
     match config.provider {
         AIProviderType::Claude => {
