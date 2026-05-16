@@ -14,6 +14,9 @@ export interface ResolvedBinaryInfo {
     checkedPaths: string[];
 }
 
+/**
+ * 解析平台相关的 LSP 二进制位置，兼容打包模式与开发模式。
+ */
 export class ServerManager {
     private context: ExtensionContext;
 
@@ -42,6 +45,7 @@ export class ServerManager {
         const envPath = process.env.AI_TAB_COMPLETE_LSP_PATH;
         if (envPath) {
             checkedPaths.push(envPath);
+            // 显式覆盖在路径存在时具有最高优先级。
             if (fs.existsSync(envPath)) {
                 return {
                     path: envPath,
@@ -56,6 +60,7 @@ export class ServerManager {
         }
 
         checkedPaths.push(packagedPath);
+        // 生产/发布版扩展路径。
         if (fs.existsSync(packagedPath)) {
             return {
                 path: packagedPath,
@@ -69,6 +74,7 @@ export class ServerManager {
         }
 
         const devPaths = this.getDevBinaryPaths(binaryName);
+        // 开发模式兜底：先尝试 release，再尝试 debug。
         for (const [index, devPath] of devPaths.entries()) {
             checkedPaths.push(devPath);
             if (fs.existsSync(devPath)) {
@@ -116,6 +122,7 @@ export class ServerManager {
     }
 
     private getBinaryName(platform: string): string {
+        // Windows 可执行文件包含 `.exe`，类 Unix 平台不包含。
         return platform.startsWith('win32')
             ? 'ai-tab-complete-lsp.exe'
             : 'ai-tab-complete-lsp';

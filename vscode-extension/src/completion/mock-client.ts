@@ -3,6 +3,10 @@ import { StreamUpdateCallback } from '../lsp/client';
 import { InlineCompletionList, InlineCompletionParams } from '../lsp/protocol';
 import { InlineCompletionClient } from './provider';
 
+/**
+ * 用于开发/测试的确定性本地补全后端。
+ * 不依赖网络，也不依赖服务端进程。
+ */
 export class MockInlineCompletionClient implements InlineCompletionClient, vscode.Disposable {
     private readonly callbacks = new Set<StreamUpdateCallback>();
 
@@ -25,6 +29,7 @@ export class MockInlineCompletionClient implements InlineCompletionClient, vscod
         const lineIndex = Math.min(params.position.line, document.lineCount - 1);
         const line = document.lineAt(lineIndex).text;
         const prefix = line.slice(0, params.position.character);
+        // 基于规则的补全模板，按前缀/语言选择。
         const text = buildMockCompletion(prefix, document.languageId);
 
         if (!text) {

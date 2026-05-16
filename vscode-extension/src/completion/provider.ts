@@ -27,6 +27,11 @@ export interface InlineCompletionClient {
     onStreamUpdate(callback: StreamUpdateCallback): { dispose(): void };
 }
 
+/**
+ * VS Code inline completion provider。
+ * 数据流：
+ * editor request -> debounce -> client cache -> LSP/mock request -> cache/store。
+ */
 export class AIInlineCompletionProvider implements InlineCompletionItemProvider {
     private debouncer: Debouncer;
     private lspClient: InlineCompletionClient;
@@ -53,6 +58,8 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
         }));
 
         this.disposables.push(this.lspClient.onStreamUpdate((params) => {
+            // 仅接收当前追踪流的更新。
+            // 避免陈旧流文本覆盖更新请求的结果。
             if (params.streamId === this.currentStreamId) {
                 this.currentStreamText = params.text;
             }
@@ -79,12 +86,14 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
         }
 
         try {
-            // 构建缓存 key：文档 + 位置 + 当前行内容
+            // 缓存键有意只包含当前行前缀：
+            // 在同一光标位置快速输入时足够快、开销低且稳定。
+            // 耦合风险：TTL 期间会忽略当前行之外的编辑。
             const line = document.lineAt(position.line).text;
             const prefix = line.substring(0, position.character);
             const cacheKey = `${document.uri.toString()}:${position.line}:${prefix}`;
 
-            // 检查客户端缓存
+            // 客户端短 TTL 缓存可避免重复 LSP 往返。
             const cached = this.clientCache.get(cacheKey);
             if (cached) {
                 return [
@@ -92,7 +101,7 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
                 ];
             }
 
-            // 通过 LSP 请求补全
+            // 通过路由客户端向后端请求补全。
             const result = await this.lspClient.requestInlineCompletion(
                 {
                     textDocument: { uri: document.uri.toString() },
@@ -109,11 +118,12 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
             const item = result.items[0];
 
             if (item.streamId) {
+                // 流式模式：保留最新流 token 供外部 UI 轮询。
                 this.currentStreamId = item.streamId;
                 this.currentStreamText = item.text;
             }
 
-            // 写入客户端缓存
+            // 仅缓存非空文本，避免把空失败结果固定住。
             if (item.text) {
                 this.clientCache.set(cacheKey, item.text);
             }

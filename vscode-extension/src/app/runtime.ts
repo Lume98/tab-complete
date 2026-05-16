@@ -9,11 +9,19 @@ import { registerExtensionContributions } from './registrations';
 
 const RESTART_DELAY_MS = 2000;
 
+/**
+ * 将补全请求和流式更新路由到当前激活的后端（mock 或 LSP）。
+ * Provider 始终通过该路由器通信，因此切换客户端无需重新注册 provider。
+ */
 class CompletionClientRouter implements InlineCompletionClient, vscode.Disposable {
     private client: InlineCompletionClient | null = null;
     private clientSubscription: vscode.Disposable | null = null;
     private callbacks = new Set<StreamUpdateCallback>();
 
+    /**
+     * 热切换底层补全客户端。
+     * 在绑定新客户端前，总是先释放已有的流订阅。
+     */
     attach(client: InlineCompletionClient | null): void {
         this.clientSubscription?.dispose();
         this.client = client;
@@ -55,6 +63,12 @@ class CompletionClientRouter implements InlineCompletionClient, vscode.Disposabl
     }
 }
 
+/**
+ * Runtime 负责扩展级生命周期，并编排：
+ * - settings 与状态栏
+ * - 补全客户端模式（mock / LSP）
+ * - 命令与 provider 注册
+ */
 export class ExtensionRuntime implements vscode.Disposable {
     private readonly settings = new Settings();
     private readonly statusBar = new StatusBarManager();
@@ -65,6 +79,13 @@ export class ExtensionRuntime implements vscode.Disposable {
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
+    /**
+     * 激活流程：
+     * 1) 注册核心可释放资源
+     * 2) 初始化补全后端
+     * 3) 注册 VS Code 贡献点
+     * 4) 订阅运行时配置变更
+     */
     async activate(): Promise<void> {
         this.context.subscriptions.push(
             this,
@@ -120,6 +141,7 @@ export class ExtensionRuntime implements vscode.Disposable {
         const startupConfig = this.getStartupConfigSnapshot();
         this.log(`Startup config: ${JSON.stringify(startupConfig)}`);
 
+        // 当配置项缺失时默认使用 mock=true，确保早期开发环境即使没有可用 LSP 二进制也能启动扩展。
         if (this.settings.get<boolean>('useMockClient') ?? true) {
             this.clientRouter.attach(this.mockClient);
             this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion'));
@@ -132,6 +154,7 @@ export class ExtensionRuntime implements vscode.Disposable {
             const nextClient = new LspClient(this.context, (message) => this.log(message));
             await nextClient.start();
 
+            // 仅在启动成功后再替换指针，避免在 provider 请求路径上暴露半初始化客户端。
             this.lspClient = nextClient;
             this.clientRouter.attach(nextClient);
             this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion'));
@@ -147,6 +170,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 
     private async stopCompletionClient(): Promise<void> {
         const currentClient = this.lspClient;
+        // 关闭过程中先从路由器解绑，阻止新的请求流量进入。
         this.clientRouter.attach(null);
         this.lspClient = null;
 
@@ -192,6 +216,10 @@ export class ExtensionRuntime implements vscode.Disposable {
         };
     }
 
+    /**
+     * 耦合说明：
+     * provider 名称必须与服务端工厂和 package.json 配置保持一致。
+     */
     private resolveProviderModel(provider: string | undefined): string | undefined {
         switch (provider) {
             case 'claude':

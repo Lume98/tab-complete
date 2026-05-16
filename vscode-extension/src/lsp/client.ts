@@ -21,6 +21,13 @@ export type StreamUpdateCallback = (params: {
     done: boolean;
 }) => void;
 
+/**
+ * `vscode-languageclient` 的轻量封装。
+ * 职责：
+ * - 启停生命周期管理
+ * - 初始化时传递配置快照
+ * - inline completion 的请求/通知桥接
+ */
 export class LspClient {
     private client: LanguageClient | null = null;
     private serverManager: ServerManager;
@@ -87,7 +94,8 @@ export class LspClient {
             clientOptions
         );
 
-        // 注册流式更新通知监听
+        // 服务端通过自定义通知推送增量更新。
+        // 在本地分发给订阅方（provider/router）。
         this.client.onNotification('custom/inlineCompletionUpdate', (params: any) => {
             this.streamUpdateCallbacks.forEach(cb => cb(params));
         });
@@ -116,6 +124,7 @@ export class LspClient {
         token?: CancellationToken
     ): Promise<InlineCompletionList | null> {
         if (!this.client) {
+            // 防止在重启窗口期被调用。
             return null;
         }
         try {
@@ -134,6 +143,7 @@ export class LspClient {
     async clearCache(): Promise<void> {
         if (this.client) {
             try {
+                // 通知为 fire-and-forget，不需要负载。
                 await this.client.sendNotification('textDocument/clearCache');
             } catch (err) {
                 console.error('Failed to clear cache:', err);
@@ -153,6 +163,7 @@ export class LspClient {
     }
 
     private loadConfig(): Record<string, unknown> {
+        // key 名称需与服务端 Config schema 保持一致。
         const config = workspace.getConfiguration('aiTabComplete');
         return {
             provider: config.get('provider'),
@@ -169,6 +180,7 @@ export class LspClient {
     }
 
     private resolveActiveModel(config: Record<string, unknown>): unknown {
+        // provider/model 映射与设置键名存在隐式契约。
         switch (config.provider) {
             case 'claude':
                 return config.claudeModel;

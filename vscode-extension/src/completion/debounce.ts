@@ -20,7 +20,7 @@ export class Debouncer {
         const elapsed = now - this.lastCall;
         this.lastCall = now;
 
-        // 如果上次调用是 0（初次），或 elapsed > delay，不需要等待
+        // 首次调用或已超过延迟阈值时，立即放行。
         if (elapsed > this.delay) {
             return !token.isCancellationRequested;
         }
@@ -31,7 +31,7 @@ export class Debouncer {
             return !token.isCancellationRequested;
         }
 
-        // 分段等待，以便及时响应取消
+        // 分段 sleep 可保持较低的取消响应延迟。
         const interval = 10;
         let waited = 0;
         while (waited < waitTime) {

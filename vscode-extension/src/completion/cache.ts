@@ -8,6 +8,10 @@ interface CacheEntry {
     timestamp: number;
 }
 
+/**
+ * 扩展宿主进程内的小型内存 LRU 缓存（带 TTL）。
+ * 实现依赖 Map 的插入顺序执行 LRU 淘汰。
+ */
 export class ClientCache {
     private cache: Map<string, CacheEntry>;
     private maxEntries: number;
@@ -23,12 +27,13 @@ export class ClientCache {
         const entry = this.cache.get(key);
         if (!entry) return undefined;
 
+        // 在 LRU 刷新前先检查 TTL 过期。
         if (Date.now() - entry.timestamp > this.ttlMs) {
             this.cache.delete(key);
             return undefined;
         }
 
-        // LRU: 移动到尾部
+        // LRU 刷新：重新插入以将 key 移到最新位置。
         this.cache.delete(key);
         this.cache.set(key, entry);
         return entry.text;

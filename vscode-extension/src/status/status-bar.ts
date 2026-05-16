@@ -2,6 +2,10 @@ import { window, StatusBarAlignment, StatusBarItem, Disposable, ThemeColor } fro
 
 type StatusState = 'initializing' | 'ready' | 'error' | 'disabled';
 
+/**
+ * 管理扩展状态栏状态机：
+ * initializing -> ready/disabled -> error（可通过重启或切换恢复）。
+ */
 export class StatusBarManager implements Disposable {
     private item: StatusBarItem;
     private state: StatusState = 'initializing';
@@ -26,6 +30,7 @@ export class StatusBarManager implements Disposable {
     }
 
     showReady(enabled?: boolean): void {
+        // 若未传入 enabled，则保持先前的禁用状态粘性。
         const isEnabled = enabled ?? this.state !== 'disabled';
         this.state = isEnabled ? 'ready' : 'disabled';
         this.item.text = isEnabled
