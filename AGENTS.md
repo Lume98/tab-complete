@@ -13,7 +13,8 @@
 
 | 文件 | 职责 |
 |------|------|
-| `server/src/server.rs` | LSP Backend + 补全主逻辑 |
+| `server/src/lsp/backend.rs` | LSP Backend + 请求路由 |
+| `server/src/app/completion_service.rs` | 补全主逻辑编排 |
 | `server/src/ai/mod.rs` | AIProvider trait + 工厂函数 |
 | `server/src/ai/streaming.rs` | SSE 解析 (Claude/OpenAI) |
 | `server/src/completion/context.rs` | 上下文收集 + 过滤 |

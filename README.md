@@ -189,7 +189,7 @@ ai-tab-complete/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs              # 入口
-│       ├── server.rs            # LSP Backend
+│       ├── lsp/backend.rs       # LSP Backend
 │       ├── protocol.rs          # 自定义协议
 │       ├── ai/                  # AI Provider 适配器
 │       │   ├── claude.rs

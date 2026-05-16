@@ -96,7 +96,7 @@ ai-tab-complete/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs                # 入口
-│       ├── server.rs              # LSP Backend + 补全主逻辑
+│       ├── lsp/backend.rs         # LSP Backend + 请求路由
 │       ├── protocol.rs            # 自定义协议类型
 │       ├── ai/                    # AI Provider 适配器
 │       ├── completion/            # 补全逻辑

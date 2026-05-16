@@ -29,7 +29,8 @@
   → Debouncer (150ms)
   → ClientCache 检查
   → LSP textDocument/inlineCompletion 请求
-  → Backend::handle_inline_completion()
+  → lsp::Backend::handle_inline_completion_lsp()
+    → app::CompletionService::handle_inline_completion()
     → ContextCollector 收集上下文 (prefix/suffix/语言)
     → should_complete() 过滤
     → CacheManager 检查 (LruCache, TTL)
@@ -52,8 +53,14 @@ ai-tab-complete/
 ├── server/                         # Rust LSP Server
 │   ├── Cargo.toml                  # tower-lsp 0.20, tokio, reqwest, tiktoken-rs
 │   └── src/
-│       ├── main.rs                 # 入口：初始化配置、创建 Provider、启动 LspService
-│       ├── server.rs               # Backend：LSP 生命周期 + 补全核心逻辑
+│       ├── main.rs                 # bootstrap：初始化配置、组装依赖、启动 LspService
+│       ├── app/
+│       │   ├── completion_service.rs # 补全主流程编排
+│       │   └── provider_factory.rs # 根据配置创建 AI Provider
+│       ├── lsp/
+│       │   ├── backend.rs          # LSP 生命周期 + 请求路由
+│       │   ├── documents.rs        # 已打开文档状态
+│       │   └── edits.rs            # 增量编辑应用
 │       ├── protocol.rs             # 自定义协议类型
 │       ├── ai/
 │       │   ├── mod.rs              # AIProvider trait + 工厂函数
@@ -64,7 +71,7 @@ ai-tab-complete/
 │       │   └── retry.rs            # 指数退避重试 (最多 2 次, 500ms 基础延迟)
 │       ├── completion/
 │       │   ├── context.rs          # 上下文收集 + CompletionRequest
-│       │   ├── handler.rs          # 独立补全处理器 (备用)
+│       │   ├── language.rs         # 根据 URI 扩展名检测语言
 │       │   ├── prompt.rs           # Prompt 模板 (Claude/OpenAI/Ollama FIM)
 │       │   └── filter.rs           # 后处理：去 markdown、截断 (20行/512字符)
 │       ├── cache/
@@ -77,7 +84,10 @@ ai-tab-complete/
 ├── vscode-extension/                      # VS Code Extension
 │   ├── package.json                # 引擎 ^1.116.0, 9 配置项, 3 命令, 2 快捷键
 │   ├── src/
-│   │   ├── extension.ts            # 入口：激活、注册命令/Provider、启动 LSP
+│   │   ├── extension.ts            # 入口：委托 runtime 激活/释放
+│   │   ├── app/
+│   │   │   ├── runtime.ts          # 扩展运行时：LSP 生命周期 + client proxy
+│   │   │   └── registrations.ts    # 命令/Provider/状态栏注册
 │   │   ├── lsp/
 │   │   │   ├── client.ts           # LspClient 封装 (请求/流式监听/缓存清理)
 │   │   │   ├── protocol.ts         # TS 侧协议类型
@@ -213,15 +223,18 @@ Release 构建启用 LTO + strip 优化体积。打 tag 自动触发 GitHub Acti
 
 | 文件 | 核心职责 |
 |------|----------|
-| `server/src/server.rs` | LSP Backend + 补全主逻辑 + 语言检测 (25+ 语言) |
+| `server/src/lsp/backend.rs` | LSP Backend + 请求路由 |
+| `server/src/app/completion_service.rs` | 补全主逻辑编排 |
 | `server/src/ai/mod.rs` | AIProvider trait 定义 + 工厂函数 |
 | `server/src/ai/streaming.rs` | SSE 解析 (Claude/OpenAI) |
 | `server/src/completion/context.rs` | 上下文收集 + 过滤 |
+| `server/src/completion/language.rs` | 语言检测 |
 | `server/src/completion/prompt.rs` | Prompt 模板构建 |
 | `server/src/completion/filter.rs` | 补全结果后处理 |
 | `server/src/cache/mod.rs` | 异步 LRU 缓存管理 |
 | `server/src/config/mod.rs` | 配置加载 (文件>环境变量>默认) |
-| `vscode-extension/src/extension.ts` | 扩展入口 + 命令注册 |
+| `vscode-extension/src/app/runtime.ts` | 扩展运行时 + LSP 生命周期 |
+| `vscode-extension/src/extension.ts` | 扩展入口 |
 | `vscode-extension/src/completion/provider.ts` | VS Code InlineCompletionItemProvider |
 | `vscode-extension/src/lsp/client.ts` | LSP 客户端封装 + 流式监听 |
 | `vscode-extension/package.json` | 扩展清单 + 配置定义 |

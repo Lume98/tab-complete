@@ -1,29 +1,44 @@
 import {
+    Disposable,
     InlineCompletionItemProvider,
     InlineCompletionContext,
     InlineCompletionItem,
-    InlineCompletionList,
+    InlineCompletionList as VsCodeInlineCompletionList,
     TextDocument,
     Position,
     CancellationToken,
     Range,
 } from 'vscode';
-import { LspClient } from '../lsp/client';
+import { StreamUpdateCallback } from '../lsp/client';
+import {
+    InlineCompletionList as LspInlineCompletionList,
+    InlineCompletionParams,
+} from '../lsp/protocol';
 import { Debouncer } from './debounce';
 import { ClientCache } from './cache';
 import { Settings } from '../config/settings';
 
+export interface InlineCompletionClient {
+    requestInlineCompletion(
+        params: InlineCompletionParams,
+        token?: CancellationToken
+    ): Promise<LspInlineCompletionList | null>;
+    clearCache(): Promise<void>;
+    onStreamUpdate(callback: StreamUpdateCallback): { dispose(): void };
+}
+
 export class AIInlineCompletionProvider implements InlineCompletionItemProvider {
     private debouncer: Debouncer;
-    private lspClient: LspClient;
+    private lspClient: InlineCompletionClient;
     private settings: Settings;
     private clientCache: ClientCache;
+    private readonly disposables: Disposable[] = [];
 
     private currentStreamText = '';
     private currentStreamId = '';
 
     constructor(
-        lspClient: LspClient,
+        lspClient: InlineCompletionClient,
         settings: Settings
     ) {
         this.lspClient = lspClient;
@@ -31,17 +46,17 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
         this.debouncer = new Debouncer(settings.get<number>('debounceMs') ?? 150);
         this.clientCache = new ClientCache(100, 5000);
 
-        settings.onDidChange((key, value) => {
+        this.disposables.push(settings.onDidChange((key, value) => {
             if (key === 'debounceMs') {
                 this.debouncer.updateDelay(value as number);
             }
-        });
+        }));
 
-        this.lspClient.onStreamUpdate((params) => {
+        this.disposables.push(this.lspClient.onStreamUpdate((params) => {
             if (params.streamId === this.currentStreamId) {
                 this.currentStreamText = params.text;
             }
-        });
+        }));
     }
 
     async provideInlineCompletionItems(
@@ -49,7 +64,7 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
         position: Position,
         context: InlineCompletionContext,
         token: CancellationToken
-    ): Promise<InlineCompletionItem[] | InlineCompletionList | undefined> {
+    ): Promise<InlineCompletionItem[] | VsCodeInlineCompletionList | undefined> {
         if (!this.settings.get<boolean>('enableAutoCompletion')) {
             return undefined;
         }
@@ -123,5 +138,12 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
 
     clearCache(): void {
         this.clientCache.clear();
+    }
+
+    dispose(): void {
+        for (const disposable of this.disposables) {
+            disposable.dispose();
+        }
+        this.disposables.length = 0;
     }
 }
