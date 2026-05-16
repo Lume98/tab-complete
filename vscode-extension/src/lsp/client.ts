@@ -3,7 +3,14 @@ import {
     LanguageClientOptions,
     ServerOptions,
 } from 'vscode-languageclient/node';
-import { ExtensionContext, workspace, window, CancellationToken, Disposable } from 'vscode';
+import {
+    ExtensionContext,
+    workspace,
+    window,
+    CancellationToken,
+    Disposable,
+    OutputChannel,
+} from 'vscode';
 import { ServerManager } from './server-manager';
 import { InlineCompletionParams, InlineCompletionList } from './protocol';
 
@@ -18,16 +25,34 @@ export class LspClient {
     private client: LanguageClient | null = null;
     private serverManager: ServerManager;
     private streamUpdateCallbacks: StreamUpdateCallback[] = [];
+    private readonly lspOutputChannel: OutputChannel;
 
-    constructor(context: ExtensionContext) {
+    constructor(
+        context: ExtensionContext,
+        private readonly logger?: (message: string) => void
+    ) {
         this.serverManager = new ServerManager(context);
+        this.lspOutputChannel = window.createOutputChannel('AI Tab Complete LSP');
     }
 
     async start(): Promise<void> {
-        const serverPath = this.serverManager.resolveBinaryPath();
+        const binaryInfo = this.serverManager.resolveBinaryInfo();
+        const config = this.loadConfig();
+
+        this.log(
+            `LSP binary resolved: source=${binaryInfo.source}, exists=${binaryInfo.exists}, platform=${binaryInfo.platform}, path=${binaryInfo.path}`
+        );
+
+        if (binaryInfo.envPath && binaryInfo.source !== 'env') {
+            this.log(`LSP env override ignored because path does not exist: ${binaryInfo.envPath}`);
+        }
+
+        if (!binaryInfo.exists) {
+            this.log(`LSP binary probes: ${binaryInfo.checkedPaths.join(' | ')}`);
+        }
 
         const serverOptions: ServerOptions = {
-            command: serverPath,
+            command: binaryInfo.path,
             args: ['--stdio'],
             options: {
                 env: {
@@ -42,14 +67,18 @@ export class LspClient {
                 { scheme: 'untitled', language: '*' },
             ],
             initializationOptions: {
-                config: this.loadConfig(),
+                config,
             },
             synchronize: {
                 configurationSection: 'aiTabComplete',
                 fileEvents: workspace.createFileSystemWatcher('**/*'),
             },
-            outputChannel: window.createOutputChannel('AI Tab Complete LSP'),
+            outputChannel: this.lspOutputChannel,
         };
+
+        this.log(
+            `Starting LSP client: provider=${config.provider}, model=${this.resolveActiveModel(config)}, streaming=${config.enableStreaming}, autoCompletion=${config.enableAutoCompletion}`
+        );
 
         this.client = new LanguageClient(
             'aiTabComplete',
@@ -63,13 +92,22 @@ export class LspClient {
             this.streamUpdateCallbacks.forEach(cb => cb(params));
         });
 
-        await this.client.start();
+        try {
+            await this.client.start();
+            this.log('LSP client started');
+        } catch (error) {
+            this.lspOutputChannel.dispose();
+            throw error;
+        }
     }
 
     async stop(): Promise<void> {
         if (this.client) {
+            this.log('Stopping LSP client');
             await this.client.stop();
             this.client = null;
+            this.log('LSP client stopped');
+            this.lspOutputChannel.dispose();
         }
     }
 
@@ -128,5 +166,22 @@ export class LspClient {
             openaiModel: config.get('openai.model'),
             ollamaModel: config.get('ollama.model'),
         };
+    }
+
+    private resolveActiveModel(config: Record<string, unknown>): unknown {
+        switch (config.provider) {
+            case 'claude':
+                return config.claudeModel;
+            case 'openai':
+                return config.openaiModel;
+            case 'ollama':
+                return config.ollamaModel;
+            default:
+                return 'unknown';
+        }
+    }
+
+    private log(message: string): void {
+        this.logger?.(message);
     }
 }

@@ -2,6 +2,18 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ExtensionContext } from 'vscode';
 
+export type BinarySource = 'env' | 'packaged' | 'dev-release' | 'dev-debug' | 'missing';
+
+export interface ResolvedBinaryInfo {
+    path: string;
+    source: BinarySource;
+    exists: boolean;
+    platform: string;
+    binaryName: string;
+    envPath?: string;
+    checkedPaths: string[];
+}
+
 export class ServerManager {
     private context: ExtensionContext;
 
@@ -12,41 +24,79 @@ export class ServerManager {
     /**
      * 解析 Rust LSP Server 二进制路径
      * 查找顺序:
-     * 1. 扩展包内的 platform-specific 二进制
-     * 2. 环境变量 AI_TAB_COMPLETE_LSP_PATH
+     * 1. 环境变量 AI_TAB_COMPLETE_LSP_PATH
+     * 2. 扩展包内的 platform-specific 二进制
      * 3. 开发模式 - 指向 cargo build 产物
      */
-    resolveBinaryPath(): string {
-        // 环境变量覆盖（开发模式）
-        const envPath = process.env.AI_TAB_COMPLETE_LSP_PATH;
-        if (envPath && fs.existsSync(envPath)) {
-            return envPath;
-        }
-
-        // 平台特定路径
+    resolveBinaryInfo(): ResolvedBinaryInfo {
         const platform = this.getPlatform();
         const binaryName = this.getBinaryName(platform);
-        const binaryPath = path.join(
+        const packagedPath = path.join(
             this.context.extensionPath,
             'lsp-bin',
             platform,
             binaryName
         );
+        const checkedPaths: string[] = [];
 
-        if (fs.existsSync(binaryPath)) {
-            return binaryPath;
-        }
-
-        // 开发模式 fallback: 查找 cargo build 产物
-        const devPaths = this.getDevBinaryPaths(binaryName);
-        for (const devPath of devPaths) {
-            if (fs.existsSync(devPath)) {
-                return devPath;
+        const envPath = process.env.AI_TAB_COMPLETE_LSP_PATH;
+        if (envPath) {
+            checkedPaths.push(envPath);
+            if (fs.existsSync(envPath)) {
+                return {
+                    path: envPath,
+                    source: 'env',
+                    exists: true,
+                    platform,
+                    binaryName,
+                    envPath,
+                    checkedPaths,
+                };
             }
         }
 
-        // 最后 fallback: 返回 extensionPath 中的路径（会失败但报错明确）
-        return binaryPath;
+        checkedPaths.push(packagedPath);
+        if (fs.existsSync(packagedPath)) {
+            return {
+                path: packagedPath,
+                source: 'packaged',
+                exists: true,
+                platform,
+                binaryName,
+                envPath,
+                checkedPaths,
+            };
+        }
+
+        const devPaths = this.getDevBinaryPaths(binaryName);
+        for (const [index, devPath] of devPaths.entries()) {
+            checkedPaths.push(devPath);
+            if (fs.existsSync(devPath)) {
+                return {
+                    path: devPath,
+                    source: index === 0 ? 'dev-release' : 'dev-debug',
+                    exists: true,
+                    platform,
+                    binaryName,
+                    envPath,
+                    checkedPaths,
+                };
+            }
+        }
+
+        return {
+            path: packagedPath,
+            source: 'missing',
+            exists: false,
+            platform,
+            binaryName,
+            envPath,
+            checkedPaths,
+        };
+    }
+
+    resolveBinaryPath(): string {
+        return this.resolveBinaryInfo().path;
     }
 
     private getPlatform(): string {
@@ -82,8 +132,7 @@ export class ServerManager {
 
     isBinaryAvailable(): boolean {
         try {
-            const binPath = this.resolveBinaryPath();
-            return fs.existsSync(binPath);
+            return this.resolveBinaryInfo().exists;
         } catch {
             return false;
         }

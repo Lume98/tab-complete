@@ -75,6 +75,7 @@ export class ExtensionRuntime implements vscode.Disposable {
             this.outputChannel
         );
 
+        this.logStartupBanner();
         this.statusBar.showInitializing();
         await this.startCompletionClient();
 
@@ -92,15 +93,19 @@ export class ExtensionRuntime implements vscode.Disposable {
         this.context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration((event) => {
                 if (event.affectsConfiguration('aiTabComplete.useMockClient')) {
+                    this.log(
+                        `Configuration changed: useMockClient=${this.settings.get<boolean>('useMockClient')}`
+                    );
                     void this.restart();
                 }
             })
         );
 
-        this.outputChannel.appendLine('AI Tab Complete activated');
+        this.log('Extension activated');
     }
 
     async restart(): Promise<void> {
+        this.log(`Restart requested, waiting ${RESTART_DELAY_MS}ms before restart`);
         this.statusBar.showInitializing();
         await this.stopCompletionClient();
         await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY_MS));
@@ -112,23 +117,28 @@ export class ExtensionRuntime implements vscode.Disposable {
     }
 
     private async startCompletionClient(): Promise<void> {
+        const startupConfig = this.getStartupConfigSnapshot();
+        this.log(`Startup config: ${JSON.stringify(startupConfig)}`);
+
         if (this.settings.get<boolean>('useMockClient') ?? true) {
             this.clientRouter.attach(this.mockClient);
             this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion'));
-            this.outputChannel.appendLine('AI Tab Complete running with mock completions');
+            this.log('Completion client ready: mode=mock');
             return;
         }
 
         try {
-            const nextClient = new LspClient(this.context);
+            this.log('Completion client mode=lsp');
+            const nextClient = new LspClient(this.context, (message) => this.log(message));
             await nextClient.start();
 
             this.lspClient = nextClient;
             this.clientRouter.attach(nextClient);
             this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion'));
-            this.outputChannel.appendLine('AI Tab Complete connected to LSP server');
+            this.log('Completion client ready: mode=lsp');
         } catch (error) {
             console.error('Failed to start LSP server:', error);
+            this.log(`Failed to start LSP server: ${this.stringifyError(error)}`);
             this.clientRouter.attach(null);
             this.lspClient = null;
             this.statusBar.showError('LSP Server 启动失败');
@@ -141,6 +151,7 @@ export class ExtensionRuntime implements vscode.Disposable {
         this.lspClient = null;
 
         if (!currentClient) {
+            this.log('No active LSP client to stop');
             return;
         }
 
@@ -148,6 +159,65 @@ export class ExtensionRuntime implements vscode.Disposable {
             await currentClient.stop();
         } catch (error) {
             console.error('Error stopping LSP client:', error);
+            this.log(`Error stopping LSP client: ${this.stringifyError(error)}`);
         }
+    }
+
+    private logStartupBanner(): void {
+        const extension = this.context.extension;
+        const workspaceFolders = vscode.workspace.workspaceFolders?.map((folder) => folder.name) ?? [];
+        const extensionMode = vscode.ExtensionMode[this.context.extensionMode] ?? 'Unknown';
+
+        this.log(
+            `Booting extension v${extension.packageJSON.version} (${extensionMode}) at ${extension.extensionPath}`
+        );
+        this.log(
+            `Workspace folders (${workspaceFolders.length}): ${workspaceFolders.length > 0 ? workspaceFolders.join(', ') : '(none)'}`
+        );
+    }
+
+    private getStartupConfigSnapshot(): Record<string, unknown> {
+        const provider = this.settings.get<string>('provider');
+        return {
+            useMockClient: this.settings.get<boolean>('useMockClient'),
+            provider,
+            model: this.resolveProviderModel(provider),
+            enableAutoCompletion: this.settings.get<boolean>('enableAutoCompletion'),
+            enableStreaming: this.settings.get<boolean>('enableStreaming'),
+            debounceMs: this.settings.get<number>('debounceMs'),
+            maxTokens: this.settings.get<number>('maxTokens'),
+            contextLinesBefore: this.settings.get<number>('contextLinesBefore'),
+            contextLinesAfter: this.settings.get<number>('contextLinesAfter'),
+            envLspPath: process.env.AI_TAB_COMPLETE_LSP_PATH ?? '(unset)',
+        };
+    }
+
+    private resolveProviderModel(provider: string | undefined): string | undefined {
+        switch (provider) {
+            case 'claude':
+                return this.settings.get<string>('claude.model');
+            case 'openai':
+                return this.settings.get<string>('openai.model');
+            case 'ollama':
+                return this.settings.get<string>('ollama.model');
+            default:
+                return undefined;
+        }
+    }
+
+    private stringifyError(error: unknown): string {
+        if (error instanceof Error) {
+            return error.stack ?? `${error.name}: ${error.message}`;
+        }
+        try {
+            return JSON.stringify(error);
+        } catch {
+            return String(error);
+        }
+    }
+
+    private log(message: string): void {
+        const timestamp = new Date().toISOString();
+        this.outputChannel.appendLine(`[${timestamp}] ${message}`);
     }
 }
