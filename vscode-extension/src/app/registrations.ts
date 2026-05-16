@@ -75,8 +75,7 @@ export function registerExtensionContributions(
 
     context.subscriptions.push(
         settings.onDidChange((key) => {
-            // aiTabComplete 命名空间下任意配置变更都会发出 '*'。
-            if (key === 'enableAutoCompletion' || key === '*') {
+            if (key === 'enableAutoCompletion') {
                 statusBar.showReady(settings.get<boolean>('enableAutoCompletion'));
             }
         })

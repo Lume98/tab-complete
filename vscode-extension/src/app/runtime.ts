@@ -6,6 +6,10 @@ import { InlineCompletionList, InlineCompletionParams } from '../lsp/protocol';
 import { Settings } from '../config/settings';
 import { StatusBarManager } from '../status/status-bar';
 import { registerExtensionContributions } from './registrations';
+import {
+    PROVIDER_MODEL_KEY_MAP,
+    resolveProviderOrFallback,
+} from '../config/provider-config';
 
 const RESTART_DELAY_MS = 2000;
 
@@ -76,6 +80,8 @@ export class ExtensionRuntime implements vscode.Disposable {
     private readonly mockClient = new MockInlineCompletionClient();
     private readonly outputChannel = vscode.window.createOutputChannel('AI Tab Complete');
     private lspClient: LspClient | null = null;
+    private restarting = false;
+    private restartQueued = false;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -112,13 +118,12 @@ export class ExtensionRuntime implements vscode.Disposable {
         );
 
         this.context.subscriptions.push(
-            vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration('aiTabComplete.useMockClient')) {
-                    this.log(
-                        `Configuration changed: useMockClient=${this.settings.get<boolean>('useMockClient')}`
-                    );
-                    void this.restart();
+            this.settings.onDidChange((key, value) => {
+                if (!this.shouldRestartForConfigKey(key)) {
+                    return;
                 }
+                this.log(`Configuration changed: ${key}=${String(value)}`);
+                void this.restart();
             })
         );
 
@@ -126,11 +131,25 @@ export class ExtensionRuntime implements vscode.Disposable {
     }
 
     async restart(): Promise<void> {
-        this.log(`Restart requested, waiting ${RESTART_DELAY_MS}ms before restart`);
-        this.statusBar.showInitializing();
-        await this.stopCompletionClient();
-        await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY_MS));
-        await this.startCompletionClient();
+        if (this.restarting) {
+            this.restartQueued = true;
+            this.log('Restart already in progress; merged additional restart request');
+            return;
+        }
+
+        this.restarting = true;
+        try {
+            do {
+                this.restartQueued = false;
+                this.log(`Restart requested, waiting ${RESTART_DELAY_MS}ms before restart`);
+                this.statusBar.showInitializing();
+                await this.stopCompletionClient();
+                await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY_MS));
+                await this.startCompletionClient();
+            } while (this.restartQueued);
+        } finally {
+            this.restarting = false;
+        }
     }
 
     dispose(): void {
@@ -140,6 +159,7 @@ export class ExtensionRuntime implements vscode.Disposable {
     private async startCompletionClient(): Promise<void> {
         const startupConfig = this.getStartupConfigSnapshot();
         this.log(`Startup config: ${JSON.stringify(startupConfig)}`);
+        this.warnIfProviderFallbackApplied();
 
         // 当配置项缺失时默认使用 mock=true，确保早期开发环境即使没有可用 LSP 二进制也能启动扩展。
         if (this.settings.get<boolean>('useMockClient') ?? true) {
@@ -201,7 +221,8 @@ export class ExtensionRuntime implements vscode.Disposable {
     }
 
     private getStartupConfigSnapshot(): Record<string, unknown> {
-        const provider = this.settings.get<string>('provider');
+        const resolvedProvider = resolveProviderOrFallback(this.settings.get<string>('provider'));
+        const provider = resolvedProvider.provider;
         return {
             useMockClient: this.settings.get<boolean>('useMockClient'),
             provider,
@@ -221,15 +242,35 @@ export class ExtensionRuntime implements vscode.Disposable {
      * provider 名称必须与服务端工厂和 package.json 配置保持一致。
      */
     private resolveProviderModel(provider: string | undefined): string | undefined {
-        switch (provider) {
-            case 'claude':
-                return this.settings.get<string>('claude.model');
-            case 'openai':
-                return this.settings.get<string>('openai.model');
-            case 'ollama':
-                return this.settings.get<string>('ollama.model');
+        const resolved = resolveProviderOrFallback(provider);
+        return this.settings.get<string>(PROVIDER_MODEL_KEY_MAP[resolved.provider]);
+    }
+
+    private warnIfProviderFallbackApplied(): void {
+        const resolved = resolveProviderOrFallback(this.settings.get<string>('provider'));
+        if (!resolved.fallbackApplied) {
+            return;
+        }
+
+        const warning = `Invalid provider "${String(resolved.original)}", fallback to "${resolved.provider}"`;
+        this.log(warning);
+        void vscode.window.setStatusBarMessage(`AI Tab Complete: provider 无效，已回退到 ${resolved.provider}`, 5000);
+    }
+
+    private shouldRestartForConfigKey(key: string): boolean {
+        switch (key) {
+            case 'useMockClient':
+            case 'provider':
+            case 'claude.model':
+            case 'openai.model':
+            case 'ollama.model':
+            case 'enableStreaming':
+            case 'maxTokens':
+            case 'contextLinesBefore':
+            case 'contextLinesAfter':
+                return true;
             default:
-                return undefined;
+                return false;
         }
     }
 

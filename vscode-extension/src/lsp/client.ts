@@ -13,6 +13,10 @@ import {
 } from 'vscode';
 import { ServerManager } from './server-manager';
 import { InlineCompletionParams, InlineCompletionList } from './protocol';
+import {
+    PROVIDER_MODEL_KEY_MAP,
+    resolveProviderOrFallback,
+} from '../config/provider-config';
 
 /** 流式更新回调 */
 export type StreamUpdateCallback = (params: {
@@ -165,8 +169,10 @@ export class LspClient {
     private loadConfig(): Record<string, unknown> {
         // key 名称需与服务端 Config schema 保持一致。
         const config = workspace.getConfiguration('aiTabComplete');
+        const resolvedProvider = resolveProviderOrFallback(config.get('provider'));
         return {
-            provider: config.get('provider'),
+            provider: resolvedProvider.provider,
+            model: config.get<string>(PROVIDER_MODEL_KEY_MAP[resolvedProvider.provider]),
             maxTokens: config.get('maxTokens'),
             debounceMs: config.get('debounceMs'),
             contextLinesBefore: config.get('contextLinesBefore'),
@@ -180,17 +186,7 @@ export class LspClient {
     }
 
     private resolveActiveModel(config: Record<string, unknown>): unknown {
-        // provider/model 映射与设置键名存在隐式契约。
-        switch (config.provider) {
-            case 'claude':
-                return config.claudeModel;
-            case 'openai':
-                return config.openaiModel;
-            case 'ollama':
-                return config.ollamaModel;
-            default:
-                return 'unknown';
-        }
+        return config.model ?? 'unknown';
     }
 
     private log(message: string): void {

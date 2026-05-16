@@ -17,6 +17,10 @@ import {
 import { Debouncer } from './debounce';
 import { ClientCache } from './cache';
 import { Settings } from '../config/settings';
+import {
+    PROVIDER_MODEL_KEY_MAP,
+    resolveProviderOrFallback,
+} from '../config/provider-config';
 
 export interface InlineCompletionClient {
     requestInlineCompletion(
@@ -55,6 +59,14 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
             if (key === 'debounceMs') {
                 this.debouncer.updateDelay(value as number);
             }
+            if (
+                key === 'provider' ||
+                key === 'claude.model' ||
+                key === 'openai.model' ||
+                key === 'ollama.model'
+            ) {
+                this.clientCache.clear();
+            }
         }));
 
         this.disposables.push(this.lspClient.onStreamUpdate((params) => {
@@ -91,7 +103,7 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
             // 耦合风险：TTL 期间会忽略当前行之外的编辑。
             const line = document.lineAt(position.line).text;
             const prefix = line.substring(0, position.character);
-            const cacheKey = `${document.uri.toString()}:${position.line}:${prefix}`;
+            const cacheKey = this.buildCacheKey(document, position.line, prefix);
 
             // 客户端短 TTL 缓存可避免重复 LSP 往返。
             const cached = this.clientCache.get(cacheKey);
@@ -148,6 +160,20 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
 
     clearCache(): void {
         this.clientCache.clear();
+    }
+
+    private buildCacheKey(document: TextDocument, line: number, prefix: string): string {
+        const { provider } = resolveProviderOrFallback(this.settings.get<string>('provider'));
+        const modelKey = PROVIDER_MODEL_KEY_MAP[provider];
+        const model = this.settings.get<string>(modelKey) ?? '';
+        return [
+            document.uri.toString(),
+            document.version,
+            line,
+            prefix,
+            provider,
+            model,
+        ].join(':');
     }
 
     dispose(): void {
