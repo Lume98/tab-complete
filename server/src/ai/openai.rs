@@ -9,6 +9,9 @@ use super::{AIError, AIProvider, CompletionChunk, CompletionStream};
 use crate::completion::context::CompletionRequest;
 use crate::completion::prompt::PromptBuilder;
 
+/// OpenAI API Provider — 封装 OpenAI Chat Completions API
+///
+/// 支持流式（stream=true，SSE）和非流式两种模式
 pub struct OpenAIProvider {
     api_key: Option<String>,
     model: String,
@@ -67,6 +70,7 @@ struct OpenAiMessage {
     content: Option<String>,
 }
 
+/// 根据 HTTP 状态码映射为 AIError
 fn check_error(status: reqwest::StatusCode, body: &str) -> AIError {
     if status.as_u16() == 401 {
         return AIError::AuthError;
@@ -99,6 +103,7 @@ impl AIProvider for OpenAIProvider {
         );
         tracing::debug!("OpenAI streaming request: {} model={}", url, self.model);
 
+        // 发送流式请求 POST /v1/chat/completions (stream=true)
         let response = self
             .client
             .post(&url)
@@ -121,9 +126,11 @@ impl AIProvider for OpenAIProvider {
             return Err(check_error(status, &body));
         }
 
+        // 将 HTTP 字节流通过 mpsc channel 转换为 CompletionChunk Stream
         let byte_stream = response.bytes_stream();
         let (tx, rx) = tokio::sync::mpsc::channel::<Result<CompletionChunk, AIError>>(32);
 
+        // 后台任务：逐块读取响应，用 SseParser 解析 SSE 事件
         tokio::spawn(async move {
             let mut sse_parser = SseParser::new();
             let mut stream = byte_stream;
@@ -176,6 +183,7 @@ impl AIProvider for OpenAIProvider {
         );
         tracing::debug!("OpenAI request: {} model={}", url, self.model);
 
+        // 发送非流式请求 POST /v1/chat/completions（一次性返回完整响应）
         let response = self
             .client
             .post(&url)
@@ -202,6 +210,7 @@ impl AIProvider for OpenAIProvider {
             return Err(check_error(status, &response_text));
         }
 
+        // 解析 JSON 响应，提取 choices[0].message.content
         let openai_resp: OpenAiResponse = serde_json::from_str(&response_text)
             .map_err(|e| AIError::StreamParseError(format!("Parse error: {}", e)))?;
 

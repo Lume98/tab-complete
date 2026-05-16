@@ -58,8 +58,8 @@ npx tsc
 ### 4. 在 VS Code 中调试
 
 1. 用 VS Code 打开项目根目录 `ai-tab-complete/`
-2. 按 `F5` 启动调试（会自动编译 Rust + TypeScript 并打开 Extension Development Host）
-3. 在新窗口中打开任意代码文件，开始打字即可看到补全
+2. 按 `F5` 启动调试（会自动编译 Rust + TypeScript，并打开 `vscode-extension/dev-fixture/` 这个测试工作区）
+3. 开发宿主会自动打开 `sample.ts`，直接输入代码测试 Tab 接受补全；如果要测试别的项目，再在开发宿主里执行 `File > Open Folder...`
 
 > 如果 F5 构建报错，可以手动先编译两端：
 > ```bash

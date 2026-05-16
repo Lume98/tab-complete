@@ -18,7 +18,9 @@ use lsp::{Backend, DocumentsState};
 
 #[tokio::main]
 async fn main() {
+    // 初始化日志：输出到 stderr（避免污染 stdio LSP 通道），无 ANSI 颜色
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("info")),
@@ -31,6 +33,7 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
+    // 加载配置（配置文件 > 环境变量 > 默认值），用 RwLock 包裹以便运行时热更新
     let config = Arc::new(RwLock::new(AppConfig::load()));
     let config_snapshot = config.read().await;
 
@@ -46,6 +49,7 @@ async fn main() {
         cache.clone(),
     ));
 
+    // 构建 LSP Service，注册自定义方法 textDocument/inlineCompletion
     let (service, socket) = LspService::build(|client| Backend {
         client,
         documents,
@@ -57,6 +61,7 @@ async fn main() {
     )
     .finish();
 
+    // 通过 stdio 启动 LSP 服务，阻塞运行直到客户端断开
     Server::new(stdin, stdout, socket)
         .serve(service)
         .await;

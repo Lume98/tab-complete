@@ -68,6 +68,11 @@
           "default": true,
           "description": "是否启用自动补全"
         },
+        "aiTabComplete.useMockClient": {
+          "type": "boolean",
+          "default": true,
+          "description": "使用本地假数据补全，不连接 LSP Server"
+        },
         "aiTabComplete.enableStreaming": {
           "type": "boolean",
           "default": true,
@@ -101,6 +106,10 @@
       {
         "command": "aiTabComplete.clearCache",
         "title": "AI Tab Complete: 清除缓存"
+      },
+      {
+        "command": "aiTabComplete.restart",
+        "title": "AI Tab Complete: 重启补全客户端"
       }
     ],
     "keybindings": [

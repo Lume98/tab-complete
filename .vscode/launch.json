@@ -5,8 +5,13 @@
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
+      "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"
+        "--new-window",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-extension",
+        "${workspaceFolder}/vscode-extension/dev-fixture",
+        "--goto",
+        "${workspaceFolder}/vscode-extension/dev-fixture/sample.ts:1:1"
       ],
       "outFiles": [
         "${workspaceFolder}/vscode-extension/out/**/*.js"

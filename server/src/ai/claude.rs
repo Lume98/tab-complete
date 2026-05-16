@@ -9,6 +9,11 @@ use super::{AIError, AIProvider, CompletionChunk, CompletionStream};
 use crate::completion::context::CompletionRequest;
 use crate::completion::prompt::PromptBuilder;
 
+/// Claude API Provider — 封装 Anthropic Messages API
+///
+/// 支持两种模式：
+/// - 流式：POST /v1/messages (stream=true)，SSE 逐 token 返回
+/// - 非流式：POST /v1/messages，一次性返回完整响应
 pub struct ClaudeProvider {
     api_key: Option<String>,
     model: String,
@@ -84,6 +89,7 @@ struct ClaudeErrorDetail {
 }
 
 fn build_request_body(request: &CompletionRequest, max_tokens: u32, stream: bool) -> ClaudeRequest {
+    // 使用 PromptBuilder 构造 user prompt，system prompt 直接内嵌
     let user_prompt = PromptBuilder::build_claude_prompt(request);
     let system_prompt = "你是一个优秀的代码自动补全助手。请根据上下文完成光标位置后的代码。只输出补全内容，不要任何解释。确保补全的代码风格与上下文一致。";
 
@@ -99,6 +105,7 @@ fn build_request_body(request: &CompletionRequest, max_tokens: u32, stream: bool
     }
 }
 
+/// 根据 HTTP 状态码和响应体映射为 AIError
 fn check_api_error(status: reqwest::StatusCode, body: &str) -> AIError {
     if status.as_u16() == 401 {
         return AIError::AuthError;
@@ -132,6 +139,7 @@ impl AIProvider for ClaudeProvider {
         let url = format!("{}/v1/messages", self.api_base.trim_end_matches('/'));
         tracing::debug!("Claude streaming request: {} model={}", url, self.model);
 
+        // 发送 HTTP POST，开启 SSE 流式响应
         let response = self
             .client
             .post(&url)
@@ -156,11 +164,12 @@ impl AIProvider for ClaudeProvider {
             return Err(check_api_error(status, &body));
         }
 
-        // 将 HTTP 流式响应转换为 CompletionChunk Stream
+        // 将 HTTP 字节流通过 mpsc channel 转换为 CompletionChunk Stream
+        // 后台 tokio 任务负责 SSE 解析，主流程返回 Stream 给调用方
         let byte_stream = response.bytes_stream();
         let (tx, rx) = tokio::sync::mpsc::channel::<Result<CompletionChunk, AIError>>(32);
 
-        // 在后台任务中处理 SSE 流
+        // 后台任务：逐块读取 HTTP 响应，用 SseParser 解析 SSE 事件，转为 CompletionChunk 发送
         tokio::spawn(async move {
             use futures::StreamExt;
             let mut sse_parser = SseParser::new();
@@ -231,6 +240,7 @@ impl AIProvider for ClaudeProvider {
         let url = format!("{}/v1/messages", self.api_base.trim_end_matches('/'));
         tracing::debug!("Claude API request: {} model={}", url, self.model);
 
+        // 发送非流式请求，等待完整响应
         let response = self
             .client
             .post(&url)
@@ -262,6 +272,7 @@ impl AIProvider for ClaudeProvider {
         let claude_resp: ClaudeResponse = serde_json::from_str(&response_text)
             .map_err(|e| AIError::StreamParseError(format!("Failed to parse response: {}", e)))?;
 
+        // 从响应中提取 text 类型的 content block，拼接为完整补全文本
         let text = claude_resp
             .content
             .iter()
