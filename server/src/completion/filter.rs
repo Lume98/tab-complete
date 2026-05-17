@@ -62,21 +62,24 @@ fn detect_language_from_prefix(prefix: &str) -> &str {
 
 /// 截断补全到合理长度
 pub fn truncate_completion(text: &str, max_lines: usize, max_chars: usize) -> String {
-    if text.len() <= max_chars {
-        return text.to_string();
-    }
-
     let mut result = String::new();
     let mut line_count = 0;
 
     for line in text.lines() {
         if line_count >= max_lines {
-            result.push('\n');
             break;
         }
-        if result.len() + line.len() + 1 > max_chars {
+
+        let next_len = if result.is_empty() {
+            line.len()
+        } else {
+            result.len() + 1 + line.len()
+        };
+
+        if next_len > max_chars {
             break;
         }
+
         if !result.is_empty() {
             result.push('\n');
         }
@@ -117,6 +120,18 @@ mod tests {
     #[test]
     fn test_truncate() {
         let text = "line1\nline2\nline3\nline4";
+        assert_eq!(truncate_completion(text, 2, 100), "line1\nline2");
+    }
+
+    #[test]
+    fn test_truncate_respects_max_chars_before_max_lines() {
+        let text = "abcdefgh\nline2\nline3";
+        assert_eq!(truncate_completion(text, 10, 4), "");
+    }
+
+    #[test]
+    fn test_truncate_respects_max_lines_before_max_chars() {
+        let text = "line1\nline2\nline3";
         assert_eq!(truncate_completion(text, 2, 100), "line1\nline2");
     }
 }

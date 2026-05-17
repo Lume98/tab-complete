@@ -14,8 +14,7 @@ import {
 import { ServerManager } from './server-manager';
 import { InlineCompletionParams, InlineCompletionList } from './protocol';
 import {
-    PROVIDER_MODEL_KEY_MAP,
-    resolveProviderOrFallback,
+    resolveProviderModel,
 } from '../config/provider-config';
 
 /** 流式更新回调 */
@@ -169,10 +168,13 @@ export class LspClient {
     private loadConfig(): Record<string, unknown> {
         // key 名称需与服务端 Config schema 保持一致。
         const config = workspace.getConfiguration('aiTabComplete');
-        const resolvedProvider = resolveProviderOrFallback(config.get('provider'));
+        const resolvedProvider = resolveProviderModel(
+            config.get('provider'),
+            (key) => config.get<string>(key)
+        );
         return {
             provider: resolvedProvider.provider,
-            model: config.get<string>(PROVIDER_MODEL_KEY_MAP[resolvedProvider.provider]),
+            model: resolvedProvider.model,
             maxTokens: config.get('maxTokens'),
             debounceMs: config.get('debounceMs'),
             contextLinesBefore: config.get('contextLinesBefore'),

@@ -7,8 +7,8 @@ import { Settings } from '../config/settings';
 import { StatusBarManager } from '../status/status-bar';
 import { registerExtensionContributions } from './registrations';
 import {
-    PROVIDER_MODEL_KEY_MAP,
-    resolveProviderOrFallback,
+    resolveProviderModel,
+    PROVIDER_MODEL_KEYS,
 } from '../config/provider-config';
 
 const RESTART_DELAY_MS = 2000;
@@ -221,12 +221,14 @@ export class ExtensionRuntime implements vscode.Disposable {
     }
 
     private getStartupConfigSnapshot(): Record<string, unknown> {
-        const resolvedProvider = resolveProviderOrFallback(this.settings.get<string>('provider'));
-        const provider = resolvedProvider.provider;
+        const resolved = resolveProviderModel(
+            this.settings.get<string>('provider'),
+            (key) => this.settings.get<string>(key)
+        );
         return {
             useMockClient: this.settings.get<boolean>('useMockClient'),
-            provider,
-            model: this.resolveProviderModel(provider),
+            provider: resolved.provider,
+            model: resolved.model,
             enableAutoCompletion: this.settings.get<boolean>('enableAutoCompletion'),
             enableStreaming: this.settings.get<boolean>('enableStreaming'),
             debounceMs: this.settings.get<number>('debounceMs'),
@@ -241,13 +243,11 @@ export class ExtensionRuntime implements vscode.Disposable {
      * 耦合说明：
      * provider 名称必须与服务端工厂和 package.json 配置保持一致。
      */
-    private resolveProviderModel(provider: string | undefined): string | undefined {
-        const resolved = resolveProviderOrFallback(provider);
-        return this.settings.get<string>(PROVIDER_MODEL_KEY_MAP[resolved.provider]);
-    }
-
     private warnIfProviderFallbackApplied(): void {
-        const resolved = resolveProviderOrFallback(this.settings.get<string>('provider'));
+        const resolved = resolveProviderModel(
+            this.settings.get<string>('provider'),
+            (key) => this.settings.get<string>(key)
+        );
         if (!resolved.fallbackApplied) {
             return;
         }

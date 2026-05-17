@@ -18,9 +18,10 @@ import { Debouncer } from './debounce';
 import { ClientCache } from './cache';
 import { Settings } from '../config/settings';
 import {
-    PROVIDER_MODEL_KEY_MAP,
-    resolveProviderOrFallback,
+    resolveProviderModel,
+    PROVIDER_MODEL_KEYS,
 } from '../config/provider-config';
+import { buildInlineCompletionCacheKey } from './cache-key';
 
 export interface InlineCompletionClient {
     requestInlineCompletion(
@@ -61,9 +62,7 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
             }
             if (
                 key === 'provider' ||
-                key === 'claude.model' ||
-                key === 'openai.model' ||
-                key === 'ollama.model'
+                PROVIDER_MODEL_KEYS.includes(key)
             ) {
                 this.clientCache.clear();
             }
@@ -163,17 +162,18 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
     }
 
     private buildCacheKey(document: TextDocument, line: number, prefix: string): string {
-        const { provider } = resolveProviderOrFallback(this.settings.get<string>('provider'));
-        const modelKey = PROVIDER_MODEL_KEY_MAP[provider];
-        const model = this.settings.get<string>(modelKey) ?? '';
-        return [
-            document.uri.toString(),
-            document.version,
+        const resolved = resolveProviderModel(
+            this.settings.get<string>('provider'),
+            (key) => this.settings.get<string>(key)
+        );
+        return buildInlineCompletionCacheKey({
+            documentUri: document.uri.toString(),
+            documentVersion: document.version,
             line,
             prefix,
-            provider,
-            model,
-        ].join(':');
+            provider: resolved.provider,
+            model: resolved.model ?? '',
+        });
     }
 
     dispose(): void {

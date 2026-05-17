@@ -28,6 +28,17 @@ impl std::fmt::Display for AIProviderType {
     }
 }
 
+impl AIProviderType {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_lowercase().as_str() {
+            "claude" => Some(Self::Claude),
+            "openai" => Some(Self::OpenAI),
+            "ollama" => Some(Self::Ollama),
+            _ => None,
+        }
+    }
+}
+
 /// 全局配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -108,6 +119,15 @@ impl AppConfig {
         config.fill_from_env();
 
         config
+    }
+
+    pub fn normalize_provider(&mut self) {
+        if let Some(provider) = AIProviderType::parse(&self.provider.to_string()) {
+            self.provider = provider;
+        } else {
+            tracing::warn!("Invalid provider in config, fallback to default: {}", self.provider);
+            self.provider = AIProviderType::default();
+        }
     }
 
     /// 获取 Claude API Key，优先级：配置文件 > 环境变量
@@ -195,11 +215,10 @@ impl AppConfig {
     fn fill_from_env(&mut self) {
         // 环境变量覆盖非 API key 配置
         if let Ok(v) = std::env::var("AI_TAB_COMPLETE_PROVIDER") {
-            match v.to_lowercase().as_str() {
-                "claude" => self.provider = AIProviderType::Claude,
-                "openai" => self.provider = AIProviderType::OpenAI,
-                "ollama" => self.provider = AIProviderType::Ollama,
-                _ => {}
+            if let Some(provider) = AIProviderType::parse(&v) {
+                self.provider = provider;
+            } else {
+                tracing::warn!("Ignoring invalid provider from env: {}", v);
             }
         }
         if let Ok(v) = std::env::var("AI_TAB_COMPLETE_MAX_TOKENS") {
@@ -211,6 +230,8 @@ impl AppConfig {
         if let Ok(v) = std::env::var("AI_TAB_COMPLETE_STREAMING") {
             self.enable_streaming = v != "false" && v != "0";
         }
+
+        self.normalize_provider();
     }
 }
 
@@ -220,4 +241,114 @@ fn dirs_home() -> Option<PathBuf> {
         .or_else(|_| std::env::var("USERPROFILE"))
         .ok()
         .map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
+
+    #[test]
+    fn provider_parse_supports_known_values() {
+        assert_eq!(AIProviderType::parse("claude"), Some(AIProviderType::Claude));
+        assert_eq!(AIProviderType::parse("openai"), Some(AIProviderType::OpenAI));
+        assert_eq!(AIProviderType::parse("ollama"), Some(AIProviderType::Ollama));
+        assert_eq!(AIProviderType::parse("OpenAI"), Some(AIProviderType::OpenAI));
+    }
+
+    #[test]
+    fn provider_parse_rejects_unknown_values() {
+        assert_eq!(AIProviderType::parse(""), None);
+        assert_eq!(AIProviderType::parse("azure"), None);
+    }
+
+    #[test]
+    fn fill_from_env_ignores_invalid_provider() {
+        let _guard = env_lock();
+        let original = std::env::var("AI_TAB_COMPLETE_PROVIDER").ok();
+        // SAFETY: tests mutate process env and restore it before exit.
+        unsafe { std::env::set_var("AI_TAB_COMPLETE_PROVIDER", "invalid-provider") };
+
+        let mut cfg = AppConfig::default();
+        cfg.provider = AIProviderType::OpenAI;
+        cfg.fill_from_env();
+        assert_eq!(cfg.provider, AIProviderType::OpenAI);
+
+        match original {
+            Some(v) => {
+                // SAFETY: restore pre-test env value.
+                unsafe { std::env::set_var("AI_TAB_COMPLETE_PROVIDER", v) };
+            }
+            None => {
+                // SAFETY: restore pre-test absence.
+                unsafe { std::env::remove_var("AI_TAB_COMPLETE_PROVIDER") };
+            }
+        }
+    }
+
+    #[test]
+    fn load_uses_default_values_without_config_or_env() {
+        let _guard = env_lock();
+        let provider = std::env::var("AI_TAB_COMPLETE_PROVIDER").ok();
+        let max_tokens = std::env::var("AI_TAB_COMPLETE_MAX_TOKENS").ok();
+        let debounce_ms = std::env::var("AI_TAB_COMPLETE_DEBOUNCE_MS").ok();
+        let streaming = std::env::var("AI_TAB_COMPLETE_STREAMING").ok();
+        let cwd = std::env::current_dir().unwrap();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ai-tab-complete-config-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // SAFETY: restore below.
+        unsafe {
+            std::env::remove_var("AI_TAB_COMPLETE_PROVIDER");
+            std::env::remove_var("AI_TAB_COMPLETE_MAX_TOKENS");
+            std::env::remove_var("AI_TAB_COMPLETE_DEBOUNCE_MS");
+            std::env::remove_var("AI_TAB_COMPLETE_STREAMING");
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        let cfg = AppConfig::load();
+        assert_eq!(cfg.provider, AIProviderType::Claude);
+        assert_eq!(cfg.max_tokens, 256);
+        assert_eq!(cfg.debounce_ms, 150);
+        assert!(cfg.enable_streaming);
+
+        std::env::set_current_dir(cwd).unwrap();
+        match provider {
+            Some(v) => unsafe { std::env::set_var("AI_TAB_COMPLETE_PROVIDER", v) },
+            None => unsafe { std::env::remove_var("AI_TAB_COMPLETE_PROVIDER") },
+        }
+        match max_tokens {
+            Some(v) => unsafe { std::env::set_var("AI_TAB_COMPLETE_MAX_TOKENS", v) },
+            None => unsafe { std::env::remove_var("AI_TAB_COMPLETE_MAX_TOKENS") },
+        }
+        match debounce_ms {
+            Some(v) => unsafe { std::env::set_var("AI_TAB_COMPLETE_DEBOUNCE_MS", v) },
+            None => unsafe { std::env::remove_var("AI_TAB_COMPLETE_DEBOUNCE_MS") },
+        }
+        match streaming {
+            Some(v) => unsafe { std::env::set_var("AI_TAB_COMPLETE_STREAMING", v) },
+            None => unsafe { std::env::remove_var("AI_TAB_COMPLETE_STREAMING") },
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn normalize_provider_keeps_valid_values() {
+        let mut cfg = AppConfig::default();
+        cfg.provider = AIProviderType::OpenAI;
+        cfg.normalize_provider();
+        assert_eq!(cfg.provider, AIProviderType::OpenAI);
+    }
 }

@@ -1,20 +1,7 @@
 import * as vscode from 'vscode';
+import { collectChangedKeys } from './settings-utils';
 
 type ChangeCallback = (key: string, value: unknown) => void;
-
-const WATCH_KEYS = [
-    'enableAutoCompletion',
-    'debounceMs',
-    'provider',
-    'useMockClient',
-    'enableStreaming',
-    'maxTokens',
-    'contextLinesBefore',
-    'contextLinesAfter',
-    'claude.model',
-    'openai.model',
-    'ollama.model',
-] as const;
 
 /**
  * aiTabComplete 命名空间的 Settings 门面层。
@@ -27,18 +14,10 @@ export class Settings {
 
     constructor() {
         this.disposable = vscode.workspace.onDidChangeConfiguration((e) => {
-            let emitted = false;
-            for (const key of WATCH_KEYS) {
-                if (!e.affectsConfiguration(`aiTabComplete.${key}`)) {
-                    continue;
-                }
-                emitted = true;
+            const changedKeys = collectChangedKeys((section) => e.affectsConfiguration(section));
+            for (const key of changedKeys) {
                 const value = this.get(key);
                 this.listeners.forEach((cb) => cb(key, value));
-            }
-
-            if (e.affectsConfiguration('aiTabComplete') && !emitted) {
-                this.listeners.forEach((cb) => cb('*', null));
             }
         });
     }

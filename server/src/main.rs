@@ -34,7 +34,9 @@ async fn main() {
     let stdout = tokio::io::stdout();
 
     // 加载配置（配置文件 > 环境变量 > 默认值），用 RwLock 包裹以便运行时热更新
-    let config = Arc::new(RwLock::new(AppConfig::load()));
+    let mut loaded_config = AppConfig::load();
+    loaded_config.normalize_provider();
+    let config = Arc::new(RwLock::new(loaded_config));
     let config_snapshot = config.read().await;
 
     let ai_provider = Arc::new(RwLock::new(create_provider_from_config(&config_snapshot)));

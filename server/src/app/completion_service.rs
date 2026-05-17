@@ -36,6 +36,13 @@ impl CompletionService {
 
     pub async fn rebuild_provider(&self) {
         let config = self.config.read().await;
+        tracing::info!(
+            "Rebuilding provider from config: provider={}, claude_model={}, openai_model={}, ollama_model={}",
+            config.provider,
+            config.claude_model,
+            config.openai_model,
+            config.ollama_model
+        );
         let new_provider = create_provider_from_config(&config);
         tracing::info!("Switched to AI provider: {}", new_provider.name());
         drop(config);
