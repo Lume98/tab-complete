@@ -11,11 +11,11 @@ import {
     Disposable,
     OutputChannel,
 } from 'vscode';
-import { ServerManager } from './server-manager';
-import { InlineCompletionParams, InlineCompletionList } from './protocol';
+import { ServerManager } from '@/lsp/server-manager';
+import { InlineCompletionParams, InlineCompletionList } from '@/lsp/protocol';
 import {
     resolveProviderModel,
-} from '../config/provider-config';
+} from '@/config/provider-config';
 
 /** 流式更新回调 */
 export type StreamUpdateCallback = (params: {

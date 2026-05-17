@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ExtensionRuntime } from './app/runtime';
+import { ExtensionRuntime } from '@/app/runtime';
 
 /**
  * 整个扩展宿主进程只维护一个 runtime 实例。

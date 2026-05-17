@@ -9,19 +9,19 @@ import {
     CancellationToken,
     Range,
 } from 'vscode';
-import { StreamUpdateCallback } from '../lsp/client';
+import { StreamUpdateCallback } from '@/lsp/client';
 import {
     InlineCompletionList as LspInlineCompletionList,
     InlineCompletionParams,
-} from '../lsp/protocol';
-import { Debouncer } from './debounce';
-import { ClientCache } from './cache';
-import { Settings } from '../config/settings';
+} from '@/lsp/protocol';
+import { Debouncer } from '@/completion/debounce';
+import { ClientCache } from '@/completion/cache';
+import { Settings } from '@/config/settings';
 import {
     resolveProviderModel,
     PROVIDER_MODEL_KEYS,
-} from '../config/provider-config';
-import { buildInlineCompletionCacheKey } from './cache-key';
+} from '@/config/provider-config';
+import { buildInlineCompletionCacheKey } from '@/completion/cache-key';
 
 export interface InlineCompletionClient {
     requestInlineCompletion(

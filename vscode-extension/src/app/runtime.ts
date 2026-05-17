@@ -1,15 +1,15 @@
 import * as vscode from 'vscode';
-import { InlineCompletionClient } from '../completion/provider';
-import { MockInlineCompletionClient } from '../completion/mock-client';
-import { LspClient, StreamUpdateCallback } from '../lsp/client';
-import { InlineCompletionList, InlineCompletionParams } from '../lsp/protocol';
-import { Settings } from '../config/settings';
-import { StatusBarManager } from '../status/status-bar';
-import { registerExtensionContributions } from './registrations';
+import { InlineCompletionClient } from '@/completion/provider';
+import { MockInlineCompletionClient } from '@/completion/mock-client';
+import { LspClient, StreamUpdateCallback } from '@/lsp/client';
+import { InlineCompletionList, InlineCompletionParams } from '@/lsp/protocol';
+import { Settings } from '@/config/settings';
+import { StatusBarManager } from '@/status/status-bar';
+import { registerExtensionContributions } from '@/app/registrations';
 import {
     resolveProviderModel,
     PROVIDER_MODEL_KEYS,
-} from '../config/provider-config';
+} from '@/config/provider-config';
 
 const RESTART_DELAY_MS = 2000;
 

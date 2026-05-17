@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectChangedKeys } from '../config/settings-utils';
+import { collectChangedKeys } from '@/config/settings-utils';
 
 test('collectChangedKeys returns concrete keys before wildcard', () => {
     const keys = collectChangedKeys((section) =>

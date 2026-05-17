@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { collectChangedKeys } from './settings-utils';
+import { collectChangedKeys } from '@/config/settings-utils';
 
 type ChangeCallback = (key: string, value: unknown) => void;
 

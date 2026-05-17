@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { AIInlineCompletionProvider, InlineCompletionClient } from '../completion/provider';
-import { acceptCompletion } from '../commands/accept';
-import { dismissCompletion } from '../commands/dismiss';
-import { Settings } from '../config/settings';
-import { StatusBarManager } from '../status/status-bar';
+import { AIInlineCompletionProvider, InlineCompletionClient } from '@/completion/provider';
+import { acceptCompletion } from '@/commands/accept';
+import { dismissCompletion } from '@/commands/dismiss';
+import { Settings } from '@/config/settings';
+import { StatusBarManager } from '@/status/status-bar';
 
 export interface RuntimeActions {
     restart(): Promise<void>;

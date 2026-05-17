@@ -1,4 +1,4 @@
-import { ProviderName } from '../config/provider-config';
+import { ProviderName } from '@/config/provider-config';
 
 export interface InlineCompletionCacheKeyParts {
     documentUri: string;
