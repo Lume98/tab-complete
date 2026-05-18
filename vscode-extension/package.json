@@ -126,15 +126,20 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "tsc -p ./",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "typecheck": "tsc -p ./ --noEmit",
+    "typecheck:watch": "tsc -p ./ --noEmit --watch --preserveWatchOutput",
+    "bundle": "node ./scripts/build.mjs",
+    "bundle:watch": "node ./scripts/build.mjs --watch",
+    "compile": "npm run typecheck && npm run bundle",
+    "watch": "node ./scripts/watch.mjs",
     "test": "npm run compile && node --test \"out/test/**/*.test.js\""
   },
   "keywords": [],
   "author": "",
   "type": "commonjs",
   "devDependencies": {
+    "esbuild": "^0.27.0",
     "@types/node": "^25.6.0",
     "@types/vscode": "^1.116.0",
     "typescript": "^6.0.3",

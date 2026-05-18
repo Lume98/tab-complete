@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { collectChangedKeys } from '@/config/settings-utils';
 
 type ChangeCallback = (key: string, value: unknown) => void;
+type SettingsScope = vscode.ConfigurationScope | null;
 
 /**
  * aiTabComplete 命名空间的 Settings 门面层。
@@ -16,20 +17,22 @@ export class Settings {
         this.disposable = vscode.workspace.onDidChangeConfiguration((e) => {
             const changedKeys = collectChangedKeys((section) => e.affectsConfiguration(section));
             for (const key of changedKeys) {
-                const value = this.get(key);
+                const value = this.get(key, null);
                 this.listeners.forEach((cb) => cb(key, value));
             }
         });
     }
 
-    // 读取 VS Code 优先级合并后的当前生效值。
-    get<T = unknown>(key: string): T {
-        return vscode.workspace.getConfiguration('aiTabComplete').get<T>(key) as T;
+    // 显式传入 scope；无资源上下文时使用 null，避免 VS Code 把读取解释成“遗漏了资源”。
+    get<T = unknown>(key: string, scope: SettingsScope = null): T {
+        return vscode.workspace.getConfiguration('aiTabComplete', scope).get<T>(key) as T;
     }
 
     // 持久化到全局用户设置，保证跨工作区行为一致。
     async set<T = unknown>(key: string, value: T): Promise<void> {
-        await vscode.workspace.getConfiguration('aiTabComplete').update(key, value, vscode.ConfigurationTarget.Global);
+        await vscode.workspace
+            .getConfiguration('aiTabComplete', null)
+            .update(key, value, vscode.ConfigurationTarget.Global);
     }
 
     onDidChange(callback: ChangeCallback): vscode.Disposable {

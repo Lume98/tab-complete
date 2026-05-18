@@ -164,7 +164,7 @@ export class ExtensionRuntime implements vscode.Disposable {
         // 当配置项缺失时默认使用 mock=true，确保早期开发环境即使没有可用 LSP 二进制也能启动扩展。
         if (this.settings.get<boolean>('useMockClient') ?? true) {
             this.clientRouter.attach(this.mockClient);
-            this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion'));
+            this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion', null));
             this.log('Completion client ready: mode=mock');
             return;
         }
@@ -177,7 +177,7 @@ export class ExtensionRuntime implements vscode.Disposable {
             // 仅在启动成功后再替换指针，避免在 provider 请求路径上暴露半初始化客户端。
             this.lspClient = nextClient;
             this.clientRouter.attach(nextClient);
-            this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion'));
+            this.statusBar.showReady(this.settings.get<boolean>('enableAutoCompletion', null));
             this.log('Completion client ready: mode=lsp');
         } catch (error) {
             console.error('Failed to start LSP server:', error);
@@ -222,19 +222,19 @@ export class ExtensionRuntime implements vscode.Disposable {
 
     private getStartupConfigSnapshot(): Record<string, unknown> {
         const resolved = resolveProviderModel(
-            this.settings.get<string>('provider'),
-            (key) => this.settings.get<string>(key)
+            this.settings.get<string>('provider', null),
+            (key) => this.settings.get<string>(key, null)
         );
         return {
-            useMockClient: this.settings.get<boolean>('useMockClient'),
+            useMockClient: this.settings.get<boolean>('useMockClient', null),
             provider: resolved.provider,
             model: resolved.model,
-            enableAutoCompletion: this.settings.get<boolean>('enableAutoCompletion'),
-            enableStreaming: this.settings.get<boolean>('enableStreaming'),
-            debounceMs: this.settings.get<number>('debounceMs'),
-            maxTokens: this.settings.get<number>('maxTokens'),
-            contextLinesBefore: this.settings.get<number>('contextLinesBefore'),
-            contextLinesAfter: this.settings.get<number>('contextLinesAfter'),
+            enableAutoCompletion: this.settings.get<boolean>('enableAutoCompletion', null),
+            enableStreaming: this.settings.get<boolean>('enableStreaming', null),
+            debounceMs: this.settings.get<number>('debounceMs', null),
+            maxTokens: this.settings.get<number>('maxTokens', null),
+            contextLinesBefore: this.settings.get<number>('contextLinesBefore', null),
+            contextLinesAfter: this.settings.get<number>('contextLinesAfter', null),
             envLspPath: process.env.AI_TAB_COMPLETE_LSP_PATH ?? '(unset)',
         };
     }
@@ -245,8 +245,8 @@ export class ExtensionRuntime implements vscode.Disposable {
      */
     private warnIfProviderFallbackApplied(): void {
         const resolved = resolveProviderModel(
-            this.settings.get<string>('provider'),
-            (key) => this.settings.get<string>(key)
+            this.settings.get<string>('provider', null),
+            (key) => this.settings.get<string>(key, null)
         );
         if (!resolved.fallbackApplied) {
             return;

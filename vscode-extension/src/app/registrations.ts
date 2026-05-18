@@ -24,12 +24,16 @@ export function registerExtensionContributions(
     actions: RuntimeActions
 ): void {
     const provider = new AIInlineCompletionProvider(client, settings);
+    const documentSelector: vscode.DocumentSelector = [
+        { scheme: 'file', language: '*' },
+        { scheme: 'untitled', language: '*' },
+    ];
 
-    // Provider 以全局模式（`**`）注册，并在内部自行执行保护检查
-    // （enableAutoCompletion、取消、防抖、缓存）。
+    // 与 LSP 客户端保持一致，只接管本地文件和未保存缓冲区。
+    // 运行时保护检查（enableAutoCompletion、取消、防抖、缓存）仍在 provider 内部执行。
     context.subscriptions.push(
         provider,
-        vscode.languages.registerInlineCompletionItemProvider({ pattern: '**' }, provider)
+        vscode.languages.registerInlineCompletionItemProvider(documentSelector, provider)
     );
 
     context.subscriptions.push(
@@ -52,7 +56,7 @@ export function registerExtensionContributions(
 
     context.subscriptions.push(
         vscode.commands.registerCommand('aiTabComplete.toggle', async () => {
-            const current = settings.get<boolean>('enableAutoCompletion');
+            const current = settings.get<boolean>('enableAutoCompletion', null);
             // 先持久化到 VS Code 设置；UI 只反映已提交状态。
             await settings.set('enableAutoCompletion', !current);
             statusBar.showReady(!current);
@@ -76,7 +80,7 @@ export function registerExtensionContributions(
     context.subscriptions.push(
         settings.onDidChange((key) => {
             if (key === 'enableAutoCompletion') {
-                statusBar.showReady(settings.get<boolean>('enableAutoCompletion'));
+                statusBar.showReady(settings.get<boolean>('enableAutoCompletion', null));
             }
         })
     );

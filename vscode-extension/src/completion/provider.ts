@@ -53,7 +53,7 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
     ) {
         this.lspClient = lspClient;
         this.settings = settings;
-        this.debouncer = new Debouncer(settings.get<number>('debounceMs') ?? 150);
+        this.debouncer = new Debouncer(settings.get<number>('debounceMs', null) ?? 150);
         this.clientCache = new ClientCache(100, 5000);
 
         this.disposables.push(settings.onDidChange((key, value) => {
@@ -83,7 +83,9 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
         context: InlineCompletionContext,
         token: CancellationToken
     ): Promise<InlineCompletionItem[] | VsCodeInlineCompletionList | undefined> {
-        if (!this.settings.get<boolean>('enableAutoCompletion')) {
+        this.debouncer.updateDelay(this.settings.get<number>('debounceMs', document.uri) ?? 150);
+
+        if (!this.settings.get<boolean>('enableAutoCompletion', document.uri)) {
             return undefined;
         }
 
@@ -163,8 +165,8 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
 
     private buildCacheKey(document: TextDocument, line: number, prefix: string): string {
         const resolved = resolveProviderModel(
-            this.settings.get<string>('provider'),
-            (key) => this.settings.get<string>(key)
+            this.settings.get<string>('provider', document.uri),
+            (key) => this.settings.get<string>(key, document.uri)
         );
         return buildInlineCompletionCacheKey({
             documentUri: document.uri.toString(),
