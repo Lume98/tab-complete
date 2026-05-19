@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { StreamUpdateCallback } from '@/lsp/client';
 import { InlineCompletionList, InlineCompletionParams } from '@/lsp/protocol';
-import { InlineCompletionClient } from '@/completion/provider';
+import { InlineCompletionClient } from '@/completion/client';
 
 /**
  * 用于开发/测试的确定性本地补全后端。

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { InlineCompletionClient } from '@/completion/provider';
+import { InlineCompletionClient } from '@/completion/client';
 import { StreamUpdateCallback } from '@/lsp/client';
 import { InlineCompletionList, InlineCompletionParams } from '@/lsp/protocol';
 

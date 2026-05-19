@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { AIInlineCompletionProvider, InlineCompletionClient } from '@/completion/provider';
+import { InlineCompletionClient } from '@/completion/client';
+import { AIInlineCompletionProvider } from '@/completion/provider';
 import { acceptCompletion } from '@/commands/accept';
 import { dismissCompletion } from '@/commands/dismiss';
 import { Settings } from '@/config/settings';
