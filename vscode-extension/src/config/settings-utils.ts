@@ -12,6 +12,14 @@ const WATCH_KEYS = [
     'ollama.model',
 ] as const;
 
+const RESTART_KEYS = WATCH_KEYS.filter(
+    (k) => k !== 'enableAutoCompletion' && k !== 'debounceMs'
+);
+
+export function shouldTriggerRestart(key: string): boolean {
+    return (RESTART_KEYS as readonly string[]).includes(key);
+}
+
 export function collectChangedKeys(
     affectsConfiguration: (section: string) => boolean
 ): string[] {

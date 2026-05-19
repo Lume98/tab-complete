@@ -3,7 +3,7 @@ import { AIInlineCompletionProvider, InlineCompletionClient } from '@/completion
 import { acceptCompletion } from '@/commands/accept';
 import { dismissCompletion } from '@/commands/dismiss';
 import { Settings } from '@/config/settings';
-import { StatusBarManager } from '@/status/status-bar';
+import { StatusIndicator } from '@/status/indicator';
 
 export interface RuntimeActions {
     restart(): Promise<void>;
@@ -20,7 +20,7 @@ export function registerExtensionContributions(
     context: vscode.ExtensionContext,
     client: InlineCompletionClient,
     settings: Settings,
-    statusBar: StatusBarManager,
+    indicator: StatusIndicator,
     actions: RuntimeActions
 ): void {
     const provider = new AIInlineCompletionProvider(client, settings);
@@ -55,11 +55,30 @@ export function registerExtensionContributions(
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('aiTabComplete.statusMenu', async () => {
+            const enabled = settings.get<boolean>('enableAutoCompletion', null);
+            const items: vscode.QuickPickItem[] = [
+                { label: enabled ? '$(circle-slash) 禁用自动补全' : '$(check) 启用自动补全', description: '切换自动补全开关' },
+                { label: '$(refresh) 重启服务', description: '重新启动 LSP 服务端' },
+                { label: '$(trash) 清除缓存', description: '清除客户端与服务端缓存' },
+            ];
+            const picked = await vscode.window.showQuickPick(items, { placeHolder: 'AI Tab Complete' });
+            if (!picked) return;
+            if (picked.label.includes('自动补全')) {
+                await vscode.commands.executeCommand('aiTabComplete.toggle');
+            } else if (picked.label.includes('重启')) {
+                await vscode.commands.executeCommand('aiTabComplete.restart');
+            } else if (picked.label.includes('缓存')) {
+                await vscode.commands.executeCommand('aiTabComplete.clearCache');
+            }
+        })
+    );
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('aiTabComplete.toggle', async () => {
             const current = settings.get<boolean>('enableAutoCompletion', null);
-            // 先持久化到 VS Code 设置；UI 只反映已提交状态。
             await settings.set('enableAutoCompletion', !current);
-            statusBar.showReady(!current);
+            !current ? indicator.showReady() : indicator.showDisabled();
         })
     );
 
@@ -80,7 +99,9 @@ export function registerExtensionContributions(
     context.subscriptions.push(
         settings.onDidChange((key) => {
             if (key === 'enableAutoCompletion') {
-                statusBar.showReady(settings.get<boolean>('enableAutoCompletion', null));
+                settings.get<boolean>('enableAutoCompletion', null)
+                    ? indicator.showReady()
+                    : indicator.showDisabled();
             }
         })
     );
