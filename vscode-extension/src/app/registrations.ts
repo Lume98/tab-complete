@@ -1,15 +1,11 @@
 import * as vscode from 'vscode';
 import { InlineCompletionClient } from '@/completion/client';
 import { AIInlineCompletionProvider } from '@/completion/provider';
-import { acceptCompletion } from '@/commands/accept';
-import { dismissCompletion } from '@/commands/dismiss';
 import { Settings } from '@/config/settings';
 import { StatusIndicator } from '@/status/indicator';
-
-export interface RuntimeActions {
-    restart(): Promise<void>;
-    clearServerCache(): Promise<void>;
-}
+import { CommandActions } from '@/commands/types';
+import { registerCommands } from '@/commands';
+import { registerSettingsChangeSync } from '@/app/register-settings-change-sync';
 
 /**
  * 在一处注册所有 VS Code 贡献点：
@@ -22,7 +18,7 @@ export function registerExtensionContributions(
     client: InlineCompletionClient,
     settings: Settings,
     indicator: StatusIndicator,
-    actions: RuntimeActions
+    actions: Pick<CommandActions, 'restart' | 'clearServerCache'>
 ): void {
     const provider = new AIInlineCompletionProvider(client, settings);
     const documentSelector: vscode.DocumentSelector = [
@@ -37,73 +33,12 @@ export function registerExtensionContributions(
         vscode.languages.registerInlineCompletionItemProvider(documentSelector, provider)
     );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.trigger', () => {
-            void vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.accept', () => {
-            void acceptCompletion();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.dismiss', () => {
-            void dismissCompletion();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.statusMenu', async () => {
-            const enabled = settings.get<boolean>('enableAutoCompletion', null);
-            const items: vscode.QuickPickItem[] = [
-                { label: enabled ? '$(circle-slash) 禁用自动补全' : '$(check) 启用自动补全', description: '切换自动补全开关' },
-                { label: '$(refresh) 重启服务', description: '重新启动 LSP 服务端' },
-                { label: '$(trash) 清除缓存', description: '清除客户端与服务端缓存' },
-            ];
-            const picked = await vscode.window.showQuickPick(items, { placeHolder: 'AI Tab Complete' });
-            if (!picked) return;
-            if (picked.label.includes('自动补全')) {
-                await vscode.commands.executeCommand('aiTabComplete.toggle');
-            } else if (picked.label.includes('重启')) {
-                await vscode.commands.executeCommand('aiTabComplete.restart');
-            } else if (picked.label.includes('缓存')) {
-                await vscode.commands.executeCommand('aiTabComplete.clearCache');
-            }
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.toggle', async () => {
-            const current = settings.get<boolean>('enableAutoCompletion', null);
-            await settings.set('enableAutoCompletion', !current);
-            !current ? indicator.showReady() : indicator.showDisabled();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.clearCache', async () => {
-            await actions.clearServerCache();
-            provider.clearCache();
-            vscode.window.showInformationMessage('AI Tab Complete 缓存已清除');
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('aiTabComplete.restart', async () => {
-            await actions.restart();
-        })
-    );
-
-    context.subscriptions.push(
-        settings.onDidChange((key) => {
-            if (key === 'enableAutoCompletion') {
-                settings.get<boolean>('enableAutoCompletion', null)
-                    ? indicator.showReady()
-                    : indicator.showDisabled();
-            }
-        })
-    );
+    registerCommands(context, {
+        settings,
+        actions: {
+            ...actions,
+            clearClientCache: () => provider.clearCache(),
+        },
+    });
+    registerSettingsChangeSync(context, settings, indicator);
 }
