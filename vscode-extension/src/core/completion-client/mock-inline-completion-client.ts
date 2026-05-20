@@ -1,13 +1,14 @@
 import * as vscode from 'vscode';
-import { StreamUpdateCallback } from '@/lsp/client';
-import { InlineCompletionList, InlineCompletionParams } from '@/lsp/protocol';
-import { InlineCompletionClient } from '@/completion/client';
+import type {
+    InlineCompletionClient,
+    StreamUpdateCallback,
+} from '@/core/completion-client/inline-completion-client';
+import type {
+    InlineCompletionList,
+    InlineCompletionParams,
+} from '@/core/lsp/protocol';
 import { MockCompletionBuilder } from '@/completion/mock-completion-builder';
 
-/**
- * 用于开发/测试的确定性本地补全后端。
- * 不依赖网络，也不依赖服务端进程。
- */
 export class MockInlineCompletionClient implements InlineCompletionClient, vscode.Disposable {
     private readonly callbacks = new Set<StreamUpdateCallback>();
     private readonly completionBuilder = new MockCompletionBuilder();
@@ -37,7 +38,6 @@ export class MockInlineCompletionClient implements InlineCompletionClient, vscod
         const line = document.lineAt(lineIndex).text;
         const character = Math.max(0, Math.min(params.position.character, line.length));
         const prefix = line.slice(0, character);
-        // 基于规则的补全模板，按前缀/语言选择。
         const text = this.completionBuilder.build(prefix, document.languageId);
 
         if (!text) {

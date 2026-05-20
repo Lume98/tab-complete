@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ExtensionRuntime } from '@/app/runtime';
+import { ExtensionRuntime } from '@/bootstrap/runtime/extension-runtime';
 
 /**
  * 整个扩展宿主进程只维护一个 runtime 实例。
@@ -21,7 +21,7 @@ export async function activate(context: vscode.ExtensionContext) {
  * 扩展关闭钩子。
  * 先释放 runtime，再清空引用，避免意外复用。
  */
-export function deactivate() {
-    runtime?.dispose();
+export async function deactivate() {
+    await runtime?.dispose();
     runtime = undefined;
 }

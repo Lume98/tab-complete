@@ -2,9 +2,6 @@ import { window, StatusBarAlignment, StatusBarItem, Disposable, ThemeColor } fro
 
 const DEFAULT_TOOLTIP = 'AI Tab Complete - 点击打开菜单';
 
-/**
- * 扩展状态指示器：initializing / ready / disabled / error。
- */
 export class StatusIndicator implements Disposable {
     private readonly item: StatusBarItem;
 
@@ -42,9 +39,7 @@ export class StatusIndicator implements Disposable {
     showError(message?: string): void {
         this.item.text = '$(error) AI Tab';
         this.item.tooltip = message ?? 'AI Tab Complete: 发生错误，点击重新启用';
-        this.item.backgroundColor = new ThemeColor(
-            'statusBarItem.errorBackground'
-        );
+        this.item.backgroundColor = new ThemeColor('statusBarItem.errorBackground');
     }
 
     dispose(): void {

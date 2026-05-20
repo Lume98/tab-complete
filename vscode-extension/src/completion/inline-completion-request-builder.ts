@@ -1,6 +1,6 @@
 import { buildInlineCompletionCacheKey } from '@/completion/cache-key';
-import { InlineCompletionParams } from '@/lsp/protocol';
-import { ProviderName } from '@/config/provider-config';
+import { InlineCompletionParams } from '@/core/lsp/protocol';
+import { ProviderName } from '@/core/config/provider-config';
 
 export interface InlineCompletionRequestInput {
     documentUri: string;

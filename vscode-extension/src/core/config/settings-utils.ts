@@ -10,10 +10,11 @@ const WATCH_KEYS = [
     'claude.model',
     'openai.model',
     'ollama.model',
+    'streamListenerMaxFailures',
 ] as const;
 
 const RESTART_KEYS = WATCH_KEYS.filter(
-    (k) => k !== 'enableAutoCompletion' && k !== 'debounceMs'
+    (key) => key !== 'enableAutoCompletion' && key !== 'debounceMs' && key !== 'streamListenerMaxFailures'
 );
 
 export function shouldTriggerRestart(key: string): boolean {

@@ -91,6 +91,13 @@
           "minimum": 0,
           "maximum": 100,
           "description": "光标后包含的上下文行数"
+        },
+        "aiTabComplete.streamListenerMaxFailures": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "流式监听器连续异常后自动移除的阈值"
         }
       }
     },
@@ -133,15 +140,18 @@
     "bundle:watch": "node ./scripts/build.mjs --watch",
     "compile": "npm run typecheck && npm run bundle",
     "watch": "node ./scripts/watch.mjs",
-    "test": "npm run compile && node --test \"out/test/**/*.test.js\""
+    "test:unit": "npm run compile && node --test \"out/test/**/*.test.js\"",
+    "test:integration": "npm run compile && node ./scripts/run-integration-tests.mjs",
+    "test": "npm run test:unit && npm run test:integration"
   },
   "keywords": [],
   "author": "",
   "type": "commonjs",
   "devDependencies": {
-    "esbuild": "^0.27.0",
     "@types/node": "^25.6.0",
     "@types/vscode": "^1.116.0",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.27.0",
     "typescript": "^6.0.3",
     "vscode-languageclient": "^9.0.1"
   }

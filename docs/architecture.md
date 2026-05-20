@@ -5,10 +5,10 @@
 ```
 ┌─────────────────────────────────┐
 │       VS Code Extension (TS)    │
-│  InlineCompletionItemProvider   │
-│  Debounce → ClientCache → LSP   │
+│  Runtime → ClientRouter         │
+│  Debounce → ClientCache → Client│
 └──────────────┬──────────────────┘
-               │ LSP (stdio)
+               │ mock / LSP (stdio)
                ▼
 ┌─────────────────────────────────┐
 │        Rust LSP Server          │
@@ -18,7 +18,7 @@
 └─────────────────────────────────┘
 ```
 
-双语言架构：TypeScript 负责 VS Code 集成，Rust 负责补全逻辑和 AI API 调用。通过 LSP stdio 协议通信。
+双语言架构：TypeScript 负责 VS Code 集成、运行时状态和客户端路由，Rust 负责补全逻辑和 AI API 调用。开发期默认启用 mock client；关闭 `aiTabComplete.useMockClient` 后通过 LSP stdio 与 Rust server 通信。
 
 ---
 
@@ -28,7 +28,8 @@
 用户打字
   → Debouncer (150ms)
   → ClientCache 检查
-  → LSP textDocument/inlineCompletion 请求
+  → CompletionClientRouter
+  → MockInlineCompletionClient 或 LSP textDocument/inlineCompletion 请求
   → lsp::Backend::handle_inline_completion_lsp()
     → app::CompletionService::handle_inline_completion()
     → ContextCollector 收集上下文 (prefix/suffix/语言)
@@ -42,7 +43,7 @@
   → Tab 接受 / Esc 取消
 ```
 
-流式模式：Rust 端 `tokio::spawn` 后台解析 SSE，通过 `custom/inlineCompletionUpdate` 通知推送到客户端，客户端监听并刷新幽灵文本。
+流式模式：Rust 端 `tokio::spawn` 后台解析 SSE，通过 `custom/inlineCompletionUpdate` 通知推送到客户端。TS 侧 `LspClient` 转发到 `CompletionClientRouter`，`AIInlineCompletionProvider` 用 `StreamTracker` 记录当前 stream，并触发 VS Code 重新请求 inline suggestion；下一次 provider 调用优先返回最新流文本，stream 完成后再写入 client cache。
 
 ---
 
@@ -82,26 +83,29 @@ ai-tab-complete/
 │           └── env.rs              # API Key 环境变量 + mask_api_key() 脱敏
 │
 ├── vscode-extension/                      # VS Code Extension
-│   ├── package.json                # 引擎 ^1.116.0, 9 配置项, 3 命令, 2 快捷键
+│   ├── package.json                # 引擎 ^1.116.0, 配置项, 命令, 快捷键
 │   ├── src/
 │   │   ├── extension.ts            # 入口：委托 runtime 激活/释放
-│   │   ├── app/
-│   │   │   ├── runtime.ts          # 扩展运行时：LSP 生命周期 + client proxy
-│   │   │   └── registrations.ts    # 命令/Provider/状态栏注册
-│   │   ├── lsp/
-│   │   │   ├── client.ts           # LspClient 封装 (请求/流式监听/缓存清理)
-│   │   │   ├── protocol.ts         # TS 侧协议类型
-│   │   │   └── server-manager.ts   # 二进制路径解析 (环境变量>内置>cargo)
+│   │   ├── bootstrap/
+│   │   │   ├── runtime/
+│   │   │   │   ├── extension-runtime.ts # 扩展装配：状态栏/设置/客户端/注册
+│   │   │   │   ├── client-runtime.ts    # client 生命周期状态机
+│   │   │   │   └── settings-restart-policy.ts # 配置变更策略
+│   │   │   └── registrations/       # 命令/Provider/配置同步注册
+│   │   ├── core/
+│   │   │   ├── completion-client/   # InlineCompletionClient 接口、router、mock client
+│   │   │   ├── config/              # provider model 解析、settings 封装
+│   │   │   ├── lsp/                 # LspClient、protocol、server-manager
+│   │   │   └── status/              # StatusIndicator
 │   │   ├── completion/
 │   │   │   ├── provider.ts         # AIInlineCompletionItemProvider
+│   │   │   ├── inline-completion-resolver.ts # 请求构建、缓存、流式文本返回
 │   │   │   ├── cache.ts            # ClientCache (LRU, 100 条目, 5s TTL)
 │   │   │   ├── debounce.ts         # Debouncer (150ms, CancellationToken)
-│   │   │   └── telemetry.ts        # 本地遥测 (接受率/延迟, 不上报)
-│   │   ├── config/settings.ts      # VS Code 配置读写 (aiTabComplete.*)
+│   │   │   └── stream-tracker.ts   # 当前活跃流状态
 │   │   ├── commands/
-│   │   │   ├── accept.ts           # Tab 接受
-│   │   │   └── dismiss.ts          # Esc 取消
-│   │   └── status/status-bar.ts    # 状态栏 (initializing/ready/error/disabled)
+│   │   │   ├── accept-command.ts   # Tab 接受
+│   │   │   └── dismiss-command.ts  # Esc 取消
 │   └── lsp-bin/                    # 预编译二进制 (按平台)
 │
 ├── scripts/                        # build.sh / build.ps1
@@ -144,6 +148,13 @@ pub trait AIProvider: Send + Sync {
 |------|------|------|
 | `textDocument/inlineCompletion` | Client → Server | 请求补全 |
 | `custom/inlineCompletionUpdate` | Server → Client | 流式推送 |
+| `textDocument/clearCache` | Client → Server | 清理 server cache |
+
+### TS Client Runtime
+
+`ExtensionRuntime` 负责组装 `Settings`、`StatusIndicator`、`CompletionClientRouter`、mock client 和 LSP client factory。`ClientRuntime` 是唯一的客户端生命周期状态机，状态包括 `idle`、`starting`、`ready`、`restarting`、`stopped`、`failed`。状态栏只由 `ClientRuntime` 写入，配置同步通过 restart/hot-update 动作回到运行时，避免 UI 状态绕过运行时。
+
+`CompletionClientRouter` 是 provider 面向的稳定 client 门面。运行时在 mock/LSP 切换时只替换 router 内部 active client，provider 不需要重新注册。router 同时隔离流式监听器异常，连续失败超过 `aiTabComplete.streamListenerMaxFailures` 后移除不稳定监听器。
 
 ---
 
@@ -151,10 +162,10 @@ pub trait AIProvider: Send + Sync {
 
 | 层级 | 位置 | 容量 | TTL | Key |
 |------|------|------|-----|-----|
-| ClientCache | TS Provider | 100 条目 | 5s | prefix + position |
+| ClientCache | TS Provider | 100 条目 | 5s | uri + version + line + prefix + provider + model |
 | LruCache | Rust CacheManager | 1000 条目 | 300s | prefix-hash + language |
 
-文档变更（did_change）时自动失效对应缓存。
+TS 侧 cache key 包含 document version，文档变更后自然失效。流式补全未完成时不写入 TS cache，完成事件到达后才缓存最终文本。
 
 ---
 
@@ -175,14 +186,17 @@ API Key 环境变量：`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`
 | 配置键 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `aiTabComplete.provider` | enum | `claude` | AI 提供商 (claude/openai/ollama) |
-| `aiTabComplete.model` | string | provider 默认 | 模型名称 |
+| `aiTabComplete.claude.model` | string | `claude-sonnet-4-20250514` | Claude 模型名称 |
+| `aiTabComplete.openai.model` | string | `gpt-4o` | OpenAI 模型名称 |
+| `aiTabComplete.ollama.model` | string | `codellama` | Ollama 模型名称 |
 | `aiTabComplete.debounceMs` | number | `150` | 防抖延迟 |
 | `aiTabComplete.maxTokens` | number | `256` | 最大补全 token 数 |
-| `aiTabComplete.contextLines` | number | `50` | 上下文行数 |
+| `aiTabComplete.enableAutoCompletion` | bool | `true` | 启用自动补全 |
+| `aiTabComplete.useMockClient` | bool | `true` | 开发期使用本地 mock client |
 | `aiTabComplete.enableStreaming` | bool | `true` | 启用流式输出 |
-| `aiTabComplete.ollamaEndpoint` | string | `http://localhost:11434` | Ollama 地址 |
-| `aiTabComplete.cacheEnabled` | bool | `true` | 启用缓存 |
-| `aiTabComplete.autoTrigger` | bool | `true` | 自动触发 |
+| `aiTabComplete.contextLinesBefore` | number | `50` | 光标前上下文行数 |
+| `aiTabComplete.contextLinesAfter` | number | `20` | 光标后上下文行数 |
+| `aiTabComplete.streamListenerMaxFailures` | number | `3` | 流式监听器连续失败移除阈值 |
 
 ---
 
@@ -233,8 +247,12 @@ Release 构建启用 LTO + strip 优化体积。打 tag 自动触发 GitHub Acti
 | `server/src/completion/filter.rs` | 补全结果后处理 |
 | `server/src/cache/mod.rs` | 异步 LRU 缓存管理 |
 | `server/src/config/mod.rs` | 配置加载 (文件>环境变量>默认) |
-| `vscode-extension/src/app/runtime.ts` | 扩展运行时 + LSP 生命周期 |
 | `vscode-extension/src/extension.ts` | 扩展入口 |
+| `vscode-extension/src/bootstrap/runtime/extension-runtime.ts` | 扩展运行时装配 |
+| `vscode-extension/src/bootstrap/runtime/client-runtime.ts` | mock/LSP client 生命周期状态机 |
+| `vscode-extension/src/core/completion-client/completion-client-router.ts` | client 门面 + 流式监听广播 |
+| `vscode-extension/src/core/lsp/lsp-client.ts` | LSP 客户端封装 + 流式监听 |
 | `vscode-extension/src/completion/provider.ts` | VS Code InlineCompletionItemProvider |
-| `vscode-extension/src/lsp/client.ts` | LSP 客户端封装 + 流式监听 |
+| `vscode-extension/src/completion/inline-completion-resolver.ts` | 请求解析、client cache、流式文本返回 |
+| `vscode-extension/src/completion/stream-tracker.ts` | 当前活跃流状态 |
 | `vscode-extension/package.json` | 扩展清单 + 配置定义 |

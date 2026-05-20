@@ -8,7 +8,7 @@ import {
 } from 'vscode';
 import { ClientCache } from '@/completion/cache';
 import { InlineCompletionRequestBuilder } from '@/completion/inline-completion-request-builder';
-import { InlineCompletionClient } from '@/completion/client';
+import { InlineCompletionClient } from '@/core/completion-client/inline-completion-client';
 import { ProviderModelState } from '@/completion/provider-model-state';
 import { StreamTracker } from '@/completion/stream-tracker';
 
@@ -50,6 +50,18 @@ export class InlineCompletionResolver {
             });
             const requestPosition = new Position(position.line, request.character);
 
+            if (this.streamTracker.hasActiveRequest(request.cacheKey)) {
+                const streamText = this.streamTracker.getText();
+                if (streamText) {
+                    if (this.streamTracker.isDone()) {
+                        this.cache.set(request.cacheKey, streamText);
+                        this.streamTracker.clear();
+                    }
+
+                    return [new InlineCompletionItem(streamText, new Range(requestPosition, requestPosition))];
+                }
+            }
+
             const cached = this.cache.get(request.cacheKey);
             if (cached) {
                 return [new InlineCompletionItem(cached, new Range(requestPosition, requestPosition))];
@@ -67,10 +79,11 @@ export class InlineCompletionResolver {
             }
 
             if (item.streamId) {
-                this.streamTracker.track(item.streamId, item.text);
+                this.streamTracker.track(item.streamId, request.cacheKey, item.text);
+            } else {
+                this.cache.set(request.cacheKey, item.text);
             }
 
-            this.cache.set(request.cacheKey, item.text);
             return [new InlineCompletionItem(item.text, new Range(requestPosition, requestPosition))];
         } catch (error) {
             console.error('AI completion error:', error);

@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
     DEFAULT_PROVIDER,
     resolveProviderModel,
-} from '@/config/provider-config';
+} from '@/core/config/provider-config';
 import { buildInlineCompletionCacheKey } from '@/completion/cache-key';
 
 test('resolveProviderModel falls back on invalid provider and keeps model lookup aligned', () => {

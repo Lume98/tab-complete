@@ -2,7 +2,7 @@ import {
     DEFAULT_PROVIDER,
     ProviderName,
     resolveProviderModel,
-} from '@/config/provider-config';
+} from '@/core/config/provider-config';
 
 export class ProviderModelState {
     private provider: ProviderName = DEFAULT_PROVIDER;

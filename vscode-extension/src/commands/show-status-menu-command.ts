@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { CommandDefinition } from '@/commands/types';
-import { Settings } from '@/config/settings';
+import { Settings } from '@/core/config/settings';
 
 type StatusMenuAction = 'toggle' | 'restart' | 'clearCache';
 type StatusMenuItem = vscode.QuickPickItem & { action: StatusMenuAction };

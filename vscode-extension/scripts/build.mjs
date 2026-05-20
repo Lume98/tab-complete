@@ -57,6 +57,14 @@ async function collectTestEntries() {
     return entries;
 }
 
+async function collectIntegrationEntries() {
+    const entries = [];
+    for await (const filePath of glob(path.join(srcRoot, 'integration', '*.ts'))) {
+        entries.push(filePath);
+    }
+    return entries;
+}
+
 const sharedOptions = {
     bundle: true,
     platform: 'node',
@@ -71,6 +79,7 @@ const sharedOptions = {
 
 async function createBuildContexts() {
     const testEntries = await collectTestEntries();
+    const integrationEntries = await collectIntegrationEntries();
 
     const extensionOptions = {
         ...sharedOptions,
@@ -86,14 +95,23 @@ async function createBuildContexts() {
         entryNames: '[dir]/[name]',
     };
 
+    const integrationOptions = {
+        ...sharedOptions,
+        entryPoints: integrationEntries,
+        outbase: srcRoot,
+        outdir: outRoot,
+        entryNames: '[dir]/[name]',
+    };
+
+    const options = integrationEntries.length > 0
+        ? [extensionOptions, testOptions, integrationOptions]
+        : [extensionOptions, testOptions];
+
     if (watchMode) {
-        return [
-            await context(extensionOptions),
-            await context(testOptions),
-        ];
+        return Promise.all(options.map((buildOptions) => context(buildOptions)));
     }
 
-    return [extensionOptions, testOptions];
+    return options;
 }
 
 async function cleanOutDir() {

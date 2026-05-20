@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Settings } from '@/config/settings';
+import { Settings } from '@/core/config/settings';
 import { CommandActions, CommandDefinition } from '@/commands/types';
 import { acceptCommand } from '@/commands/accept-command';
 import { createClearCacheCommand } from '@/commands/clear-cache-command';

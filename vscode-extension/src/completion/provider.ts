@@ -7,14 +7,15 @@ import {
     TextDocument,
     Position,
     CancellationToken,
+    commands,
 } from 'vscode';
-import { InlineCompletionClient } from '@/completion/client';
+import { InlineCompletionClient } from '@/core/completion-client/inline-completion-client';
 import { Debouncer } from '@/completion/debounce';
 import { ClientCache } from '@/completion/cache';
-import { Settings } from '@/config/settings';
+import type { Settings } from '@/core/config/settings';
 import {
     PROVIDER_MODEL_KEYS,
-} from '@/config/provider-config';
+} from '@/core/config/provider-config';
 import { InlineCompletionResolver } from '@/completion/inline-completion-resolver';
 import { ProviderModelState } from '@/completion/provider-model-state';
 import { StreamTracker } from '@/completion/stream-tracker';
@@ -27,7 +28,7 @@ import { StreamTracker } from '@/completion/stream-tracker';
 export class AIInlineCompletionProvider implements InlineCompletionItemProvider {
     private debouncer: Debouncer;
     private lspClient: InlineCompletionClient;
-    private settings: Settings;
+    private settings: Pick<Settings, 'get' | 'onDidChange'>;
     private clientCache: ClientCache;
     private readonly disposables: Disposable[] = [];
     private readonly providerModelState = new ProviderModelState();
@@ -36,7 +37,10 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
 
     constructor(
         lspClient: InlineCompletionClient,
-        settings: Settings
+        settings: Pick<Settings, 'get' | 'onDidChange'>,
+        private readonly triggerInlineSuggest: () => void = () => {
+            void commands.executeCommand('editor.action.inlineSuggest.trigger');
+        }
     ) {
         this.lspClient = lspClient;
         this.settings = settings;
@@ -63,7 +67,9 @@ export class AIInlineCompletionProvider implements InlineCompletionItemProvider 
         }));
 
         this.disposables.push(this.lspClient.onStreamUpdate((params) => {
-            this.streamTracker.update(params.streamId, params.text);
+            if (this.streamTracker.update(params.streamId, params.text, params.done)) {
+                this.triggerInlineSuggest();
+            }
         }));
     }
 

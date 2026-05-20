@@ -9,6 +9,7 @@ node_modules/
 
 # VS Code extension build output
 vscode-extension/out/
+vscode-extension/.vscode-test/
 
 # VS Code extension dev fixture
 vscode-extension/dev-fixture/

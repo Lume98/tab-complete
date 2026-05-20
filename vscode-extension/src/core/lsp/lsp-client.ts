@@ -6,43 +6,38 @@ import {
 import {
     ExtensionContext,
     workspace,
-    window,
     CancellationToken,
     Disposable,
     OutputChannel,
 } from 'vscode';
-import { ServerManager } from '@/lsp/server-manager';
-import { InlineCompletionParams, InlineCompletionList } from '@/lsp/protocol';
+import { ServerManager } from '@/core/lsp/server-manager';
+import type {
+    InlineCompletionList,
+    InlineCompletionParams,
+} from '@/core/lsp/protocol';
 import {
     resolveProviderModel,
-} from '@/config/provider-config';
+} from '@/core/config/provider-config';
+import type {
+    StartableInlineCompletionClient,
+    StreamUpdateCallback,
+} from '@/core/completion-client/inline-completion-client';
 
-/** 流式更新回调 */
-export type StreamUpdateCallback = (params: {
-    streamId: string;
-    text: string;
-    done: boolean;
-}) => void;
+export interface LspClientOptions {
+    outputChannel: OutputChannel;
+    logger?: Pick<Console, 'error' | 'warn'> & { log?: (message: string) => void };
+}
 
-/**
- * `vscode-languageclient` 的轻量封装。
- * 职责：
- * - 启停生命周期管理
- * - 初始化时传递配置快照
- * - inline completion 的请求/通知桥接
- */
-export class LspClient {
+export class LspClient implements StartableInlineCompletionClient {
     private client: LanguageClient | null = null;
-    private serverManager: ServerManager;
-    private streamUpdateCallbacks: StreamUpdateCallback[] = [];
-    private readonly lspOutputChannel: OutputChannel;
+    private readonly serverManager: ServerManager;
+    private readonly streamUpdateCallbacks: StreamUpdateCallback[] = [];
 
     constructor(
         context: ExtensionContext,
-        private readonly logger?: (message: string) => void
+        private readonly options: LspClientOptions
     ) {
         this.serverManager = new ServerManager(context);
-        this.lspOutputChannel = window.createOutputChannel('AI Tab Complete LSP');
     }
 
     async start(): Promise<void> {
@@ -67,8 +62,8 @@ export class LspClient {
             options: {
                 env: {
                     ...process.env,
-                }
-            }
+                },
+            },
         };
 
         const clientOptions: LanguageClientOptions = {
@@ -83,7 +78,7 @@ export class LspClient {
                 configurationSection: 'aiTabComplete',
                 fileEvents: workspace.createFileSystemWatcher('**/*'),
             },
-            outputChannel: this.lspOutputChannel,
+            outputChannel: this.options.outputChannel,
         };
 
         this.log(
@@ -97,29 +92,24 @@ export class LspClient {
             clientOptions
         );
 
-        // 服务端通过自定义通知推送增量更新。
-        // 在本地分发给订阅方（provider/router）。
-        this.client.onNotification('custom/inlineCompletionUpdate', (params: any) => {
-            this.streamUpdateCallbacks.forEach(cb => cb(params));
+        this.client.onNotification('custom/inlineCompletionUpdate', (params: unknown) => {
+            this.streamUpdateCallbacks.forEach((callback) => callback(params as Parameters<StreamUpdateCallback>[0]));
         });
 
-        try {
-            await this.client.start();
-            this.log('LSP client started');
-        } catch (error) {
-            this.lspOutputChannel.dispose();
-            throw error;
-        }
+        await this.client.start();
+        this.log('LSP client started');
     }
 
     async stop(): Promise<void> {
-        if (this.client) {
-            this.log('Stopping LSP client');
-            await this.client.stop();
-            this.client = null;
-            this.log('LSP client stopped');
-            this.lspOutputChannel.dispose();
+        if (!this.client) {
+            return;
         }
+
+        this.log('Stopping LSP client');
+        await this.client.stop();
+        this.client = null;
+        this.streamUpdateCallbacks.length = 0;
+        this.log('LSP client stopped');
     }
 
     async requestInlineCompletion(
@@ -127,46 +117,46 @@ export class LspClient {
         token?: CancellationToken
     ): Promise<InlineCompletionList | null> {
         if (!this.client) {
-            // 防止在重启窗口期被调用。
             return null;
         }
+
         try {
-            const result = await this.client.sendRequest<InlineCompletionList>(
+            return await this.client.sendRequest<InlineCompletionList>(
                 'textDocument/inlineCompletion',
                 params,
                 token
             );
-            return result;
-        } catch (err) {
-            console.error('Inline completion request failed:', err);
+        } catch (error) {
+            this.options.logger?.error?.('Inline completion request failed:', error);
             return null;
         }
     }
 
     async clearCache(): Promise<void> {
-        if (this.client) {
-            try {
-                // 通知为 fire-and-forget，不需要负载。
-                await this.client.sendNotification('textDocument/clearCache');
-            } catch (err) {
-                console.error('Failed to clear cache:', err);
-            }
+        if (!this.client) {
+            return;
+        }
+
+        try {
+            await this.client.sendNotification('textDocument/clearCache');
+        } catch (error) {
+            this.options.logger?.error?.('Failed to clear cache:', error);
         }
     }
 
-    /** 注册流式更新回调 */
     onStreamUpdate(callback: StreamUpdateCallback): Disposable {
         this.streamUpdateCallbacks.push(callback);
         return {
             dispose: () => {
-                const idx = this.streamUpdateCallbacks.indexOf(callback);
-                if (idx >= 0) this.streamUpdateCallbacks.splice(idx, 1);
-            }
+                const index = this.streamUpdateCallbacks.indexOf(callback);
+                if (index >= 0) {
+                    this.streamUpdateCallbacks.splice(index, 1);
+                }
+            },
         };
     }
 
     private loadConfig(): Record<string, unknown> {
-        // key 名称需与服务端 Config schema 保持一致。
         const config = workspace.getConfiguration('aiTabComplete');
         const resolvedProvider = resolveProviderModel(
             config.get('provider'),
@@ -192,6 +182,6 @@ export class LspClient {
     }
 
     private log(message: string): void {
-        this.logger?.(message);
+        this.options.logger?.log?.(message);
     }
 }
