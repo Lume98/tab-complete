@@ -17,10 +17,15 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
     private static readonly DEFAULT_MAX_LISTENER_FAILURES = 3;
     private static readonly MIN_MAX_LISTENER_FAILURES = 1;
 
+    // 当前活跃的补全客户端（mock 或 LSP）
     private activeClient: InlineCompletionClient | null = null;
+    // 当前客户端的流式更新订阅（切换客户端时自动解除）
     private streamSubscription: Disposable | null = null;
+    // 流式监听器集合：Provider 端注册的回调，接收 Server 推送的 SSE 更新
     private readonly streamListeners = new Set<StreamUpdateCallback>();
+    // 流式监听器失败计数：连续失败超过阈值后自动移除
     private readonly listenerFailureCounts = new Map<StreamUpdateCallback, number>();
+    // 当前最大失败次数阈值（可热更新）
     private maxListenerFailures: number;
     private readonly logger: Pick<Console, 'error' | 'warn'>;
 
@@ -38,6 +43,7 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
     }
 
     attach(client: InlineCompletionClient | null): void {
+        // 1. 解除旧客户端的流式订阅
         this.detachStreamSubscription();
         this.activeClient = client;
 
@@ -45,6 +51,7 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
             return;
         }
 
+        // 2. 订阅新客户端的流式更新，广播给所有 Provider 端监听器
         this.streamSubscription = client.onStreamUpdate((params) => {
             this.broadcastStreamUpdate(params);
         });
@@ -62,6 +69,7 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
     }
 
     onStreamUpdate(callback: StreamUpdateCallback): Disposable {
+        // Provider 端注册流式监听器，接收 Server 推送的 SSE 更新
         this.streamListeners.add(callback);
         this.listenerFailureCounts.set(callback, 0);
         return {
@@ -80,16 +88,20 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
     }
 
     private broadcastStreamUpdate(params: Parameters<StreamUpdateCallback>[0]): void {
+        // 广播 Server SSE 更新给所有 Provider 端监听器
         this.streamListeners.forEach((listener) => {
             try {
                 listener(params);
+                // 监听器执行成功，重置失败计数
                 this.listenerFailureCounts.set(listener, 0);
             } catch (error) {
+                // 监听器执行失败，计数 +1
                 const nextFailures = (this.listenerFailureCounts.get(listener) ?? 0) + 1;
                 this.listenerFailureCounts.set(listener, nextFailures);
 
                 this.logger.error('CompletionClientRouter stream listener error:', error);
 
+                // 连续失败超过阈值，移除不稳定监听器（避免堵塞后续广播）
                 if (nextFailures >= this.maxListenerFailures) {
                     this.streamListeners.delete(listener);
                     this.listenerFailureCounts.delete(listener);

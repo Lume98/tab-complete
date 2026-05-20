@@ -29,8 +29,11 @@ export interface LspClientOptions {
 }
 
 export class LspClient implements StartableInlineCompletionClient {
+    // tower-lsp LanguageClient 实例（延迟创建，start() 时初始化）
     private client: LanguageClient | null = null;
+    // 二进制路径解析器：处理不同平台的二进制文件位置
     private readonly serverManager: ServerManager;
+    // 流式更新回调列表：Server 推送 custom/inlineCompletionUpdate → 转发给 router
     private readonly streamUpdateCallbacks: StreamUpdateCallback[] = [];
 
     constructor(
@@ -41,7 +44,9 @@ export class LspClient implements StartableInlineCompletionClient {
     }
 
     async start(): Promise<void> {
+        // 1. 解析 Rust LSP Server 二进制位置（扩展内置或环境变量覆盖）
         const binaryInfo = this.serverManager.resolveBinaryInfo();
+        // 2. 加载初始化配置：provider、model、enableStreaming 等
         const config = this.loadConfig();
 
         this.log(
@@ -56,6 +61,7 @@ export class LspClient implements StartableInlineCompletionClient {
             this.log(`LSP binary probes: ${binaryInfo.checkedPaths.join(' | ')}`);
         }
 
+        // 3. 配置 LSP Server 启动参数：stdio 通信模式
         const serverOptions: ServerOptions = {
             command: binaryInfo.path,
             args: ['--stdio'],
@@ -66,6 +72,7 @@ export class LspClient implements StartableInlineCompletionClient {
             },
         };
 
+        // 4. 配置 LSP Client 选项：文档选择器、初始化配置、文件监听
         const clientOptions: LanguageClientOptions = {
             documentSelector: [
                 { scheme: 'file', language: '*' },
@@ -85,6 +92,7 @@ export class LspClient implements StartableInlineCompletionClient {
             `Starting LSP client: provider=${config.provider}, model=${this.resolveActiveModel(config)}, streaming=${config.enableStreaming}, autoCompletion=${config.enableAutoCompletion}`
         );
 
+        // 5. 创建 LSP Client 实例
         this.client = new LanguageClient(
             'aiTabComplete',
             'AI Tab Complete',
@@ -92,10 +100,12 @@ export class LspClient implements StartableInlineCompletionClient {
             clientOptions
         );
 
+        // 6. 监听流式更新通知（Server 推送 SSE token 更新）
         this.client.onNotification('custom/inlineCompletionUpdate', (params: unknown) => {
             this.streamUpdateCallbacks.forEach((callback) => callback(params as Parameters<StreamUpdateCallback>[0]));
         });
 
+        // 7. 启动 LSP Client（托管进程启动/通信）
         await this.client.start();
         this.log('LSP client started');
     }
@@ -106,8 +116,10 @@ export class LspClient implements StartableInlineCompletionClient {
         }
 
         this.log('Stopping LSP client');
+        // 关闭 LSP Client：停止进程、清理通信管道
         await this.client.stop();
         this.client = null;
+        // 清空流式监听器列表
         this.streamUpdateCallbacks.length = 0;
         this.log('LSP client stopped');
     }
@@ -121,6 +133,7 @@ export class LspClient implements StartableInlineCompletionClient {
         }
 
         try {
+            // 同步请求：发送 textDocument/inlineCompletion 请求给 Rust Server
             return await this.client.sendRequest<InlineCompletionList>(
                 'textDocument/inlineCompletion',
                 params,
