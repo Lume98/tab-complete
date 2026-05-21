@@ -20,44 +20,33 @@ export interface StartupConfigSnapshot {
     originalProviderValue: unknown;
 }
 
+type LoggableSnapshot = Omit<StartupConfigSnapshot, 'fallbackApplied' | 'originalProviderValue'>;
+
 export function createStartupConfigSnapshot(
     settings: Pick<Settings, 'get'>
 ): StartupConfigSnapshot {
     const resolved = resolveProviderModel(
-        settings.get<string>('provider', null),
-        (key) => settings.get<string>(key, null)
+        settings.get<string>('provider'),
+        (key) => settings.get<string>(key)
     );
     return {
-        useMockClient: settings.get<boolean>('useMockClient', null) ?? true,
+        useMockClient: settings.get<boolean>('useMockClient') ?? true,
         provider: resolved.provider,
         model: resolved.model,
-        enableAutoCompletion: settings.get<boolean>('enableAutoCompletion', null) ?? true,
-        enableStreaming: settings.get<boolean>('enableStreaming', null) ?? true,
-        debounceMs: settings.get<number>('debounceMs', null),
-        maxTokens: settings.get<number>('maxTokens', null),
-        contextLinesBefore: settings.get<number>('contextLinesBefore', null),
-        contextLinesAfter: settings.get<number>('contextLinesAfter', null),
-        streamListenerMaxFailures: settings.get<number>('streamListenerMaxFailures', null),
+        enableAutoCompletion: settings.get<boolean>('enableAutoCompletion') ?? true,
+        enableStreaming: settings.get<boolean>('enableStreaming') ?? true,
+        debounceMs: settings.get<number>('debounceMs'),
+        maxTokens: settings.get<number>('maxTokens'),
+        contextLinesBefore: settings.get<number>('contextLinesBefore'),
+        contextLinesAfter: settings.get<number>('contextLinesAfter'),
+        streamListenerMaxFailures: settings.get<number>('streamListenerMaxFailures'),
         envLspPath: process.env.AI_TAB_COMPLETE_LSP_PATH ?? '(unset)',
         fallbackApplied: resolved.fallbackApplied,
         originalProviderValue: resolved.original,
     };
 }
 
-export function toStartupConfigLogObject(
-    snapshot: StartupConfigSnapshot
-): Record<string, unknown> {
-    return {
-        useMockClient: snapshot.useMockClient,
-        provider: snapshot.provider,
-        model: snapshot.model,
-        enableAutoCompletion: snapshot.enableAutoCompletion,
-        enableStreaming: snapshot.enableStreaming,
-        debounceMs: snapshot.debounceMs,
-        maxTokens: snapshot.maxTokens,
-        contextLinesBefore: snapshot.contextLinesBefore,
-        contextLinesAfter: snapshot.contextLinesAfter,
-        streamListenerMaxFailures: snapshot.streamListenerMaxFailures,
-        envLspPath: snapshot.envLspPath,
-    };
+export function toStartupConfigLogObject(snapshot: StartupConfigSnapshot): LoggableSnapshot {
+    const { fallbackApplied: _, originalProviderValue: __, ...loggable } = snapshot;
+    return loggable;
 }

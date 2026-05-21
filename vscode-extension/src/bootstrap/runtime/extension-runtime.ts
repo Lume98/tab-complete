@@ -2,15 +2,13 @@ import * as vscode from 'vscode';
 import { ClientRuntime } from '@/bootstrap/runtime/client-runtime';
 import { RuntimeLogger } from '@/bootstrap/runtime/runtime-logger';
 import { SettingsRestartPolicy } from '@/bootstrap/runtime/settings-restart-policy';
-import { registerExtensionContributions } from '@/bootstrap/registrations/register-extension-contributions';
 import { registerCompletionContributions } from '@/bootstrap/registrations/register-completion-contributions';
-import { registerCommandContributions } from '@/bootstrap/registrations/register-command-contributions';
-import { registerConfigurationSync } from '@/bootstrap/registrations/register-configuration-sync';
 import { CompletionClientRouter } from '@/core/completion-client/completion-client-router';
 import { MockInlineCompletionClient } from '@/core/completion-client/mock-inline-completion-client';
 import { Settings } from '@/core/config/settings';
 import { StatusIndicator } from '@/core/status/status-indicator';
 import { LspClient } from '@/core/lsp/lsp-client';
+import { registerCommands } from '@/commands';
 
 export class ExtensionRuntime {
     // 配置管理：读取 VS Code Settings、环境变量、配置文件
@@ -72,22 +70,19 @@ export class ExtensionRuntime {
         await this.clientRuntime.start();
 
         // 3. 注册 VS Code 扩展贡献（命令、completion provider、配置同步）
-        registerExtensionContributions(
+        const completionHandle = registerCompletionContributions(
             this.context,
-            {
-                client: this.clientRouter,
-                settings: this.settings,
-                actions: {
-                    restart: () => this.clientRuntime.restart(),
-                    clearServerCache: () => this.clientRouter.clearCache(),
-                },
-            },
-            {
-                registerCompletionContributions,
-                registerCommandContributions,
-                registerConfigurationSync,
-            }
+            this.clientRouter,
+            this.settings
         );
+        registerCommands(this.context, {
+            settings: this.settings,
+            actions: {
+                restart: () => this.clientRuntime.restart(),
+                clearServerCache: () => this.clientRouter.clearCache(),
+                clearClientCache: () => completionHandle.clearClientCache(),
+            },
+        });
 
         // 4. 监听配置变更：restart 或 hot-update 流式监听参数
         this.ownedDisposables.push(

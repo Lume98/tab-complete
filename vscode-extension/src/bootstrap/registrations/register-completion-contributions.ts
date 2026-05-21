@@ -2,7 +2,11 @@ import * as vscode from 'vscode';
 import type { InlineCompletionClient } from '@/core/completion-client/inline-completion-client';
 import type { Settings } from '@/core/config/settings';
 import { AIInlineCompletionProvider } from '@/completion/provider';
-import type { CompletionContributionHandle } from '@/bootstrap/registrations/register-extension-contributions';
+
+export interface CompletionContributionHandle {
+    clearClientCache(): void;
+    dispose(): void;
+}
 
 export function registerCompletionContributions(
     context: vscode.ExtensionContext,

@@ -14,7 +14,7 @@ const WATCH_KEYS = [
 ] as const;
 
 const RESTART_KEYS = WATCH_KEYS.filter(
-    (key) => key !== 'enableAutoCompletion' && key !== 'debounceMs' && key !== 'streamListenerMaxFailures'
+    (key) => key !== 'debounceMs' && key !== 'streamListenerMaxFailures'
 );
 
 export function shouldTriggerRestart(key: string): boolean {

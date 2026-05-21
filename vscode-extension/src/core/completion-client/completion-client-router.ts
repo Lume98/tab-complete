@@ -13,6 +13,11 @@ export interface CompletionClientRouterOptions {
     logger?: Pick<Console, 'error' | 'warn'>;
 }
 
+/**
+ * 在 InlineCompletionClient 实现（LSP / mock）与 Provider 端监听器之间充当路由层，
+ * 使两侧可以独立替换而无需互相持有引用。
+ * 通过 attach() 切换底层客户端时，流式订阅会自动迁移，已注册的监听器无感知。
+ */
 export class CompletionClientRouter implements InlineCompletionClient, Disposable {
     private static readonly DEFAULT_MAX_LISTENER_FAILURES = 3;
     private static readonly MIN_MAX_LISTENER_FAILURES = 1;
@@ -34,6 +39,10 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
         this.logger = options?.logger ?? console;
     }
 
+    /**
+     * 热更新最大失败次数阈值。
+     * 同时重置所有监听器的计数，避免旧统计值在新阈值下立即触发移除。
+     */
     updateStreamListenerMaxFailures(value: number | undefined): void {
         this.maxListenerFailures = this.normalizeMaxFailures(value);
         this.listenerFailureCounts.clear();
@@ -42,6 +51,11 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
         });
     }
 
+    /**
+     * 切换底层客户端。
+     * 先解除旧订阅再建立新订阅，确保过渡期间不会丢失或重复推送流式更新。
+     * 传入 null 相当于断开客户端，此后请求一律返回 null，流式更新静默。
+     */
     attach(client: InlineCompletionClient | null): void {
         // 1. 解除旧客户端的流式订阅
         this.detachStreamSubscription();
@@ -87,6 +101,10 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
         this.activeClient = null;
     }
 
+    /**
+     * 单个监听器抛出异常时不中断整个广播循环；
+     * 连续失败达到阈值后移除该监听器，防止一个劣质回调拖慢所有后续推送。
+     */
     private broadcastStreamUpdate(params: Parameters<StreamUpdateCallback>[0]): void {
         // 广播 Server SSE 更新给所有 Provider 端监听器
         this.streamListeners.forEach((listener) => {
@@ -118,6 +136,7 @@ export class CompletionClientRouter implements InlineCompletionClient, Disposabl
         this.streamSubscription = null;
     }
 
+    /** 非法或缺省值统一回退到默认值，并保证最小值为 1（阈值为 0 会导致新注册监听器立即被移除）。 */
     private normalizeMaxFailures(configured: number | undefined): number {
         const fallback = CompletionClientRouter.DEFAULT_MAX_LISTENER_FAILURES;
         const parsed = typeof configured === 'number' && Number.isFinite(configured)

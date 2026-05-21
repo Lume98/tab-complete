@@ -21,3 +21,7 @@ test('shouldTriggerRestart excludes streamListenerMaxFailures for hot update', (
     assert.equal(shouldTriggerRestart('streamListenerMaxFailures'), false);
     assert.equal(shouldTriggerRestart('provider'), true);
 });
+
+test('shouldTriggerRestart includes enableAutoCompletion', () => {
+    assert.equal(shouldTriggerRestart('enableAutoCompletion'), true);
+});
